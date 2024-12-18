@@ -1,9 +1,15 @@
 //
 // Created by Bene on 17/12/2024.
 //
-
 #ifndef BOUNDED_GGX_VNDF_H
 #define BOUNDED_GGX_VNDF_H
+
+#include <mitsuba/core/distr_2d.h>
+#include <mitsuba/core/fresolver.h>
+#include <mitsuba/core/properties.h>
+#include <mitsuba/core/tensor.h>
+#include <mitsuba/core/warp.h>
+#include <mitsuba/render/bsdf.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -51,7 +57,7 @@ public:
 
     Float pdf(const Vector3f &wi, const Vector3f &wo) const {
         Normal3f m  = dr::normalize(wi + wo);
-        Float ndf   = this->ggx_ndf(m);
+        Float ndf   = this->ndf(m);
         Vector2f ai = this->m_alpha * Vector2f(wi.x(), wi.y());
         Float len2  = dr::dot(ai, ai);
         Float t     = dr::sqrt(len2 + wi.z() * wi.z());
@@ -99,17 +105,35 @@ public:
         return Vector2f(u1, u2);
     }
 
-private:
-    Float clip_uniform(const Float &u) const {
-        return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
+    Float lambda(const Float& theta) const {
+        const Float a = 1.f / (this->m_alpha * dr::tan(theta));
+        Float nominator = -1.f + dr::sqrt(1.f + 1.f / (a * a));
+        return nominator / 2.f;
     }
 
-    Float ggx_ndf(const Vector3f &n) const {
+    Float sigma(const Float& theta) const {
+        return dr::cos(theta) * (1.f + this->lambda(theta));
+    }
+
+    Float sigma_inv(const Float& sigma) const {
+        const auto& a2 = this->m_alpha2;
+        const auto& a4 = this->m_alpha4;
+        const auto s2 = sigma * sigma;
+        const auto nominator = 2.f * sigma - dr::sqrt(a4 + 4 * s2 - 4 * a2 * s2);
+        return dr::acos(nominator / 2.f);
+    }
+
+    Float ndf(const Vector3f &n) const {
         Vector3f n2       = n * n;
         const auto &a2    = this->m_alpha2;
         Float denominator = n2.x() / a2 + n2.y() / a2 + n2.z();
         denominator       = dr::Pi<Float> * a2 * denominator * denominator;
         return 1.f / denominator;
+    }
+
+private:
+    Float clip_uniform(const Float &u) const {
+        return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
     }
 
     float m_alpha;

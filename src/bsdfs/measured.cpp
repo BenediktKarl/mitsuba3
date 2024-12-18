@@ -11,7 +11,7 @@
 #define MI_SAMPLE_DIFFUSE     0
 
 /// Sample the luminance map before warping by the NDF/VNDF?
-#define MI_SAMPLE_LUMINANCE   1
+#define MI_SAMPLE_LUMINANCE   0
 
 NAMESPACE_BEGIN(mitsuba)
 
