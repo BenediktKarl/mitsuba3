@@ -104,7 +104,7 @@ public:
         const auto bounded_ggx = BoundedGGX<Float, Spectrum>(this->m_alpha);
         const auto &wi         = si.wi;
 
-        Normal3f m  = bounded_ggx.sample(wi, sample2.x(), sample2.y());
+        Normal3f m  = bounded_ggx.sample(wi, sample2.y(), sample2.x());
         Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
 
         bs.wo                = wo;
@@ -149,8 +149,9 @@ public:
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
-        Vector3f m        = dr::normalize(wo + wi);
-        const auto sample = bounded_ggx.invert(wi, m);
+        Vector3f m         = dr::normalize(wo + wi);
+        const auto sample2 = bounded_ggx.invert(wi, m);
+        const auto sample  = Point2f(sample2.y(), sample2.x());
 
         Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
 
@@ -161,7 +162,7 @@ public:
             spec[i] = this->m_spectra.eval(sample, params_spec, active);
         }
 
-        spec *= bounded_ggx.ndf(m) * (4 * bounded_ggx.sigma(theta_i));
+        spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -186,7 +187,7 @@ public:
         const auto vndf_pdf = bounded_ggx.pdf(wi, wo);
         const auto u_m      = bounded_ggx.invert(wi, m);
         const auto jacobian =
-            dr::maximum(2.f * dr::Pi<Float> * u_m.x() * Frame3f::sin_theta(m), 1e-6f) * 4.f * dr::dot(wi, m);
+            /*dr::maximum(Frame3f::sin_theta(m), 1e-6f) * */4.f * dr::dot(wi, m);
 
         const auto pdf = vndf_pdf / jacobian;
 
