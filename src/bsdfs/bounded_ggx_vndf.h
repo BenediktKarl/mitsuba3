@@ -67,8 +67,9 @@ public:
         Float s2       = s * s;
         Float k        = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
-                          ndf * (t - wi.z()) / (2 * len2));
+        return ndf / (2 * (k * wi.z() + t));
+        // return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
+                          // ndf * (t - wi.z()) / (2 * len2));
     }
 
     Vector2f invert(const Vector3f &wi, const Vector3f &m) const {

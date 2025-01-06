@@ -10,6 +10,8 @@
 
 NAMESPACE_BEGIN(mitsuba)
 
+#define PHI_M_ISOTROPIC 1
+
 template <typename Float, typename Spectrum>
 class MeasuredGGXBounded final : public BSDF<Float, Spectrum> {
 public:
@@ -97,14 +99,26 @@ public:
                                              Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
         auto bs = dr::zeros<BSDFSample3f>();
+        const auto &wi         = si.wi;
+
+        active &= Frame3f::cos_theta(wi) > 0;
         if (!ctx.is_enabled(BSDFFlags::GlossyReflection) ||
             dr::none_or<false>(active))
             return { bs, 0.f };
 
         const auto bounded_ggx = BoundedGGX<Float, Spectrum>(this->m_alpha);
-        const auto &wi         = si.wi;
 
+        Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
         Normal3f m  = bounded_ggx.sample(wi, sample2.y(), sample2.x());
+
+#if PHI_M_ISOTROPIC == 1
+        const auto theta_m = elevation(m);
+        const auto phi_m = dr::atan2(m.y(), m.x()) ;
+        const auto [sin_theta_m, cos_theta_m] = dr::sincos(theta_m);
+        const auto [sin_phi_m, cos_phi_m] = dr::sincos(phi_m + phi_i);
+        m = Vector3f(cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m, cos_theta_m);
+#endif
+
         Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
 
         bs.wo                = wo;
@@ -112,7 +126,6 @@ public:
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
 
         Vector2f sample = Vector2f(sample2.x(), sample2.y());
         UnpolarizedSpectrum spec;
@@ -122,7 +135,7 @@ public:
             spec[i]              = m_spectra.eval(sample, params_spec, active);
         }
 
-        spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
+        // spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
 
         bs.wo.x() = dr::mulsign_neg(bs.wo.x(), -1.f);
         bs.wo.y() = dr::mulsign_neg(bs.wo.y(), -1.f);
@@ -149,11 +162,20 @@ public:
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
+        Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
         Vector3f m         = dr::normalize(wo + wi);
+
+#if PHI_M_ISOTROPIC == 1
+        const auto theta_m = elevation(m);
+        const auto phi_m = dr::atan2(m.y(), m.x());
+        const auto [sin_theta_m, cos_theta_m] = dr::sincos(theta_m);
+        const auto [sin_phi_m, cos_phi_m] = dr::sincos(phi_m - phi_i);
+        m = Vector3f(cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m, cos_theta_m);
+#endif
+
         const auto sample2 = bounded_ggx.invert(wi, m);
         const auto sample  = Point2f(sample2.y(), sample2.x());
 
-        Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
 
         UnpolarizedSpectrum spec;
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
@@ -162,7 +184,7 @@ public:
             spec[i] = this->m_spectra.eval(sample, params_spec, active);
         }
 
-        spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
+        // spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -187,7 +209,7 @@ public:
         const auto vndf_pdf = bounded_ggx.pdf(wi, wo);
         const auto u_m      = bounded_ggx.invert(wi, m);
         const auto jacobian =
-            /*dr::maximum(Frame3f::sin_theta(m), 1e-6f) * */4.f * dr::dot(wi, m);
+            /*dr::maximum(Frame3f::sin_theta(m), 1e-6f) **/ 4.f * dr::dot(wi, m);
 
         const auto pdf = vndf_pdf / jacobian;
 
