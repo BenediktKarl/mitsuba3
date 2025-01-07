@@ -132,10 +132,12 @@ public:
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
             Float params_spec[3] = { phi_i, theta_i,
                                      Float(static_cast<float>(i)) };
-            spec[i]              = m_spectra.eval(sample, params_spec, active);
+            // spec[i]              = m_spectra.eval(sample, params_spec, active);
+            spec[i]              = 1;
         }
 
         // spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
+        spec *= bounded_ggx.ndf_supplementary(m) / (4 * dr::dot(wi, m));
 
         bs.wo.x() = dr::mulsign_neg(bs.wo.x(), -1.f);
         bs.wo.y() = dr::mulsign_neg(bs.wo.y(), -1.f);
@@ -181,10 +183,12 @@ public:
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
             Float params_spec[3] = { phi_i, theta_i,
                                      Float(static_cast<float>(i)) };
-            spec[i] = this->m_spectra.eval(sample, params_spec, active);
+            // spec[i] = this->m_spectra.eval(sample, params_spec, active);
+            spec[i]              = 1;
         }
 
         // spec *= bounded_ggx.ndf(m) / (4 * bounded_ggx.sigma(theta_i));
+        spec *= bounded_ggx.ndf_supplementary(m) / (4 * dr::dot(wi, m));
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -211,7 +215,7 @@ public:
         const auto jacobian =
             /*dr::maximum(Frame3f::sin_theta(m), 1e-6f) **/ 4.f * dr::dot(wi, m);
 
-        const auto pdf = vndf_pdf / jacobian;
+        const auto pdf = vndf_pdf; // / jacobian;
 
         return dr::select(active, pdf, 0.f);
     }

@@ -327,7 +327,8 @@ public:
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
             Float params_spec[3] = { phi_i, theta_i,
                 is_spectral_v<Spectrum> ? si.wavelengths[i] : Float((float) i) };
-            spec[i] = m_spectra.eval(sample, params_spec, active);
+            // spec[i] = m_spectra.eval(sample, params_spec, active);
+            spec[i]              = 1;
         }
 
         if (m_jacobian)
@@ -386,7 +387,8 @@ public:
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
             Float params_spec[3] = { phi_i, theta_i,
                 is_spectral_v<Spectrum> ? si.wavelengths[i] : Float((float) i) };
-            spec[i] = m_spectra.eval(sample, params_spec, active);
+            // spec[i] = m_spectra.eval(sample, params_spec, active);
+            spec[i]              = 1;
         }
 
         if (m_jacobian)

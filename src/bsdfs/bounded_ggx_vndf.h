@@ -26,13 +26,13 @@ public:
     }
 
     Normal3f sample(const Vector3f &wi,
-                    const Float &sample1,
-                    const Float &sample2) const {
+                    const Float &sample_phi,
+                    const Float &sample_theta) const {
         Vector3f i_std = dr::normalize(
             Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
 
-        Float u1 = this->clip_uniform(sample1);
-        Float u2 = this->clip_uniform(sample2);
+        Float u1 = this->clip_uniform(sample_phi);
+        Float u2 = this->clip_uniform(sample_theta);
 
         Float phi = 2.f * dr::Pi<Float> * u1;
         Float s   = 1.f + dr::sqrt(wi.x() * wi.x() + wi.y() * wi.y());
@@ -57,7 +57,7 @@ public:
 
     Float pdf(const Vector3f &wi, const Vector3f &wo) const {
         Normal3f m  = dr::normalize(wi + wo);
-        Float ndf   = this->ndf(m);
+        Float ndf   = this->ndf_supplementary(m);
         Vector2f ai = this->m_alpha * Vector2f(wi.x(), wi.y());
         Float len2  = dr::dot(ai, ai);
         Float t     = dr::sqrt(len2 + wi.z() * wi.z());
@@ -130,6 +130,15 @@ public:
         Float denominator = n2.x() / a2 + n2.y() / a2 + n2.z();
         denominator       = dr::Pi<Float> * a2 * denominator * denominator;
         return 1.f / denominator;
+    }
+
+    Float ndf_supplementary(const Vector3f &m) const {
+        const auto &a2 = this->m_alpha2;
+        const auto mx = dr::square(m.x()) / a2;
+        const auto my = dr::square(m.y()) / a2;
+        const auto mz = dr::square(m.z());
+        const auto denominator = dr::Pi<Float> * a2 * dr::square(mx + my + mz);
+        return dr::select(m.z() > 0, 1.f / denominator, 0);
     }
 
 private:
