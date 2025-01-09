@@ -83,21 +83,22 @@ public:
         Normal3f i_std = dr::normalize(
             Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
 
-        Float denominator =
-            (m.x() * m.x() + m.y() * m.y()) * m_alpha_inv2 + m.z();
-        Float numerator =
-            2.f * ((i_std.x() * m.x() + i_std.y() * m.y()) * m_alpha_inv +
-                   i_std.z() * m.z());
-        Float lam = numerator / denominator;
+        Float Nx = m.x(), Ny = m.y(), Nz = m.z();
+        Float Ix = i_std.x(), Iy = i_std.y(), Iz = i_std.z();
 
-        Vector3f o =
-            (lam * m.x() * m_alpha_inv - i_std.x(),
-             lam * m.y() * m_alpha_inv - i_std.y(), lam * m.z() - i_std.z());
 
-        Float phi = dr::atan2(o.y(), o.x());
+        Float denom = (Nx * Nx + Ny * Ny) * m_alpha_inv2 + Nz * Nz;
+        Float numer = 2.0 * ((Ix * Nx + Iy * Ny) * m_alpha_inv + Iz * Nz);
+        Float lam = numer / denom;
+
+        Float ox = lam * Nx * m_alpha_inv - Ix;
+        Float oy = lam * Ny * m_alpha_inv - Iy;
+        Float oz = lam * Nz - Iz;
+
+        Float phi = dr::atan2(oy, ox);
         phi       = dr::select(phi < 0.f, phi + 2.f * dr::Pi<Float>, phi);
 
-        Float z  = o.z();
+        Float z  = oz;
         Float s  = 1.f + dr::sqrt(wi.x() * wi.x() + wi.y() * wi.y());
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
