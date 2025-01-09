@@ -170,6 +170,22 @@ public:
         return dr::select(m.z() > 0, 1.f / denominator, 0);
     }
 
+    float alpha() const {
+        return this->m_alpha;
+    }
+
+    float epsilon() const {
+        return this->m_epsilon;
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const BoundedGGX &ggx) {
+        os << "BoundedGGX[\n";
+        os << "\talpha=" << ggx.m_alpha << "\n";
+        os << "\tepsilon=" << ggx.m_epsilon << "\n";
+        os << "]" << std::endl;
+        return os;
+    }
+
 private:
     Float clip_uniform(const Float &u) const {
         return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
