@@ -2,6 +2,7 @@
 
 #include <mitsuba/core/fwd.h>
 // #include <mitsuba/core/spectrum.h>
+
 #include <mitsuba/core/traits.h>
 
 NAMESPACE_BEGIN(mitsuba)
@@ -19,6 +20,7 @@ template <typename Float, typename Spectrum> class MonteCarloIntegrator;
 template <typename Float, typename Spectrum> class AdjointIntegrator;
 template <typename Float, typename Spectrum> class Medium;
 template <typename Float, typename Spectrum> class Mesh;
+template <typename Float, typename Spectrum> class BoundedGGX;
 template <typename Float, typename Spectrum> class MicrofacetDistribution;
 template <typename Float, typename Spectrum> class ReconstructionFilter;
 template <typename Float, typename Spectrum> class Sampler;
@@ -73,6 +75,7 @@ template <typename Float_, typename Spectrum_> struct RenderAliases {
 
     using Scene                  = mitsuba::Scene<FloatU, SpectrumU>;
     using Sampler                = mitsuba::Sampler<FloatU, SpectrumU>;
+    using BoundedGGX             = mitsuba::BoundedGGX<FloatU, SpectrumU>;
     using MicrofacetDistribution = mitsuba::MicrofacetDistribution<FloatU, SpectrumU>;
     using Shape                  = mitsuba::Shape<FloatU, SpectrumU>;
     using ShapeGroup             = mitsuba::ShapeGroup<FloatU, SpectrumU>;
@@ -163,6 +166,7 @@ template <typename Float_, typename Spectrum_> struct RenderAliases {
 #define MI_IMPORT_OBJECT_TYPES()                                                                   \
     using Scene                  = typename RenderAliases::Scene;                                  \
     using Sampler                = typename RenderAliases::Sampler;                                \
+    using BoundedGGX             = typename RenderAliases::BoundedGGX;                             \
     using MicrofacetDistribution = typename RenderAliases::MicrofacetDistribution;                 \
     using Shape                  = typename RenderAliases::Shape;                                  \
     using ShapeKDTree            = typename RenderAliases::ShapeKDTree;                            \

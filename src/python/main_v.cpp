@@ -97,6 +97,7 @@ MI_PY_DECLARE(MediumInteraction);
 MI_PY_DECLARE(PreliminaryIntersection);
 MI_PY_DECLARE(Medium);
 MI_PY_DECLARE(mueller);
+MI_PY_DECLARE(BoundedGGX);
 MI_PY_DECLARE(MicrofacetDistribution);
 MI_PY_DECLARE(MicroflakeDistribution);
 #if defined(MI_ENABLE_CUDA)
@@ -201,6 +202,7 @@ NB_MODULE(MI_VARIANT_NAME, m) {
     MI_PY_IMPORT(ImageBlock);
     MI_PY_IMPORT(Integrator);
     MI_PY_IMPORT_SUBMODULE(mueller);
+    MI_PY_IMPORT(BoundedGGX);
     MI_PY_IMPORT(MicrofacetDistribution);
     MI_PY_IMPORT(MicroflakeDistribution);
 #if defined(MI_ENABLE_CUDA)

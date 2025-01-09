@@ -1,7 +1,4 @@
-//
-// Created by Bene on 17/12/2024.
-//
-#ifndef BOUNDED_GGX_VNDF_H
+#pragma once
 #define BOUNDED_GGX_VNDF_H
 
 #include <mitsuba/core/distr_2d.h>
@@ -55,6 +52,15 @@ public:
                                       m_std.y() * this->m_alpha, m_std.z()));
     }
 
+    Float kiz_root(const Vector3f &wi) const {
+        Float s        = 1 + dr::sqrt(wi.x() * wi.x() + wi.y() * wi.y());
+        const auto &a2 = this->m_alpha2;
+        Float s2       = s * s;
+        Float k        = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
+        const auto wi2 = wi * wi;
+        return k * wi.z() + dr::sqrt(a2 * wi2.x() + a2 * wi2.y() + wi2.z());
+    }
+
     Float pdf(const Vector3f &wi, const Vector3f &wo) const {
         Normal3f m  = dr::normalize(wi + wo);
         Float ndf   = this->ndf_supplementary(m);
@@ -69,7 +75,7 @@ public:
 
         return ndf / (2 * (k * wi.z() + t));
         // return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
-                          // ndf * (t - wi.z()) / (2 * len2));
+        // ndf * (t - wi.z()) / (2 * len2));
     }
 
     Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
@@ -95,7 +101,8 @@ public:
         Float s  = 1.f + dr::sqrt(wi.x() * wi.x() + wi.y() * wi.y());
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
-        Float lower_bound = dr::select(wi.z() > 0.f, -k * i_std.z(), -i_std.z());
+        Float lower_bound =
+            dr::select(wi.z() > 0.f, -k * i_std.z(), -i_std.z());
 
         Float u2 = (z - 1.0) / (lower_bound - 1.0);
         Float u1 = phi / (2 * dr::Pi<Float>);
@@ -106,21 +113,43 @@ public:
         return Vector2f(u1, u2);
     }
 
-    Float lambda(const Float& theta) const {
-        const Float a = 1.f / (this->m_alpha * dr::tan(theta));
+    Float lambda(const Float &theta) const {
+        const Float a   = 1.f / (this->m_alpha * dr::tan(theta));
         Float nominator = -1.f + dr::sqrt(1.f + 1.f / (a * a));
         return nominator / 2.f;
     }
 
-    Float sigma(const Float& theta) const {
+    Float sigma(const Float &theta) const {
         return dr::cos(theta) * (1.f + this->lambda(theta));
     }
 
-    Float sigma_inv(const Float& sigma) const {
-        const auto& a2 = this->m_alpha2;
-        const auto& a4 = this->m_alpha4;
-        const auto s2 = sigma * sigma;
-        const auto nominator = 2.f * sigma - dr::sqrt(a4 + 4 * s2 - 4 * a2 * s2);
+    Float smith_g(const Vector3f &wi, const Vector3f &wo, const Vector3f &m) const {
+        return this->smith_g1(wi, m) * this->smith_g1(wo, m);
+    }
+
+    /**
+     * Numerically stable method computing the elevation of the given
+     * (normalized) vector in the local frame.
+     * Conceptually equivalent to:
+     *     safe_acos(Frame3f::cos_theta(d))
+     */
+    auto elevation(const Vector3f &d) const {
+        auto dist = dr::sqrt(dr::square(d.x()) + dr::square(d.y()) +
+                             dr::square(d.z() - 1.f));
+        return 2.f * dr::safe_asin(.5f * dist);
+    }
+
+    Float smith_g1(const Vector3f &wo, const Vector3f &wm) const {
+        return dr::select(dr::dot(wo, wm) > 0.f,
+                          1.f / (1.f + this->lambda(this->elevation(wo))), 0.f);
+    }
+
+    Float sigma_inv(const Float &sigma) const {
+        const auto &a2 = this->m_alpha2;
+        const auto &a4 = this->m_alpha4;
+        const auto s2  = sigma * sigma;
+        const auto nominator =
+            2.f * sigma - dr::sqrt(a4 + 4 * s2 - 4 * a2 * s2);
         return dr::acos(nominator / 2.f);
     }
 
@@ -133,10 +162,10 @@ public:
     }
 
     Float ndf_supplementary(const Vector3f &m) const {
-        const auto &a2 = this->m_alpha2;
-        const auto mx = dr::square(m.x()) / a2;
-        const auto my = dr::square(m.y()) / a2;
-        const auto mz = dr::square(m.z());
+        const auto &a2         = this->m_alpha2;
+        const auto mx          = dr::square(m.x()) / a2;
+        const auto my          = dr::square(m.y()) / a2;
+        const auto mz          = dr::square(m.z());
         const auto denominator = dr::Pi<Float> * a2 * dr::square(mx + my + mz);
         return dr::select(m.z() > 0, 1.f / denominator, 0);
     }
@@ -155,5 +184,3 @@ private:
 };
 
 NAMESPACE_END(mitsuba)
-
-#endif // BOUNDED_GGX_VNDF_H

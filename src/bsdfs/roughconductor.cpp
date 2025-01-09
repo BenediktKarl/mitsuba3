@@ -304,8 +304,15 @@ public:
         }
 
         /* If requested, include the specular reflectance component */
-        if (m_specular_reflectance)
-            weight *= m_specular_reflectance->eval(si, active);
+        if (m_specular_reflectance) {
+            if constexpr (is_rgb_v<Spectrum>) {
+                weight[0] *= dr::maximum(0.f, si.wi.z());
+                weight[1] *= dr::maximum(0.f, bs.wo.z());
+                weight[2] *= 0;
+            } else {
+                weight *= m_specular_reflectance->eval(si, active);
+            }
+        }
 
         return { bs, (F * weight) & active };
     }
@@ -381,8 +388,15 @@ public:
         }
 
         /* If requested, include the specular reflectance component */
-        if (m_specular_reflectance)
-            result *= m_specular_reflectance->eval(si, active);
+        if (m_specular_reflectance) {
+            if constexpr (is_rgb_v<Spectrum>) {
+                result[0] *= dr::maximum(0.f, si.wi.z());
+                result[1] *= dr::maximum(0.f, wo.z());
+                result[2] *= 0;
+            } else {
+                result *= m_specular_reflectance->eval(si, active);
+            }
+        }
 
         return (F * result) & active;
     }
@@ -503,8 +517,15 @@ public:
         }
 
         // If requested, include the specular reflectance component
-        if (m_specular_reflectance)
-            value *= m_specular_reflectance->eval(si, active);
+        if (m_specular_reflectance) {
+            if constexpr (is_rgb_v<Spectrum>) {
+                value[0] *= dr::maximum(0.f, si.wi.z());;
+                value[1] *= dr::maximum(0.f, wo.z());
+                value[2] *= 0;
+            } else {
+                value *= m_specular_reflectance->eval(si, active);
+            }
+        }
 
         Float pdf;
         if (likely(m_sample_visible))

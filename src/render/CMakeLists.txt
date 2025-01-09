@@ -48,9 +48,11 @@ add_library(mitsuba-render OBJECT
   ${INC_DIR}/fwd.h
   ${INC_DIR}/ior.h
   ${INC_DIR}/microfacet.h
+  ${INC_DIR}/bounded_ggx_vndf.h
   ${INC_DIR}/records.h
 
   bsdf.cpp         ${INC_DIR}/bsdf.h
+  bounded_ggx_vndf.cpp ${INC_DIR}/bounded_ggx_vndf.h
   emitter.cpp      ${INC_DIR}/emitter.h
   endpoint.cpp     ${INC_DIR}/endpoint.h
   film.cpp         ${INC_DIR}/film.h
