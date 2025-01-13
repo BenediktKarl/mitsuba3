@@ -5,8 +5,9 @@
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/tensor.h>
 #include <mitsuba/core/warp.h>
-#include <mitsuba/render/bsdf.h>
 #include <mitsuba/render/bounded_ggx_vndf.h>
+#include <mitsuba/render/texture.h>
+#include <mitsuba/render/bsdf.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -16,7 +17,7 @@ template <typename Float, typename Spectrum>
 class MeasuredGGXBounded final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
-    MI_IMPORT_TYPES(BoundedGGX)
+    MI_IMPORT_TYPES(Texture, BoundedGGX)
 
     using Warp2D0 = Marginal2D<Float, 0, true>;
     using Warp2D2 = Marginal2D<Float, 2, true>;
@@ -26,6 +27,17 @@ public:
         m_components.push_back(BSDFFlags::GlossyReflection |
                                BSDFFlags::FrontSide);
         m_flags = m_components[0];
+
+        if constexpr (!is_rgb_v<Spectrum>)
+            Throw("Measurements in RGB format require the use of a RGB variant "
+                  "of Mitsuba!");
+
+        if (props.has_property("specular_reflectance")) {
+            m_specular_reflectance = props.texture<Texture>("specular_reflectance", 1.f);
+            m_alpha = props.get("alpha", 0.5f);
+            Log(Info, "Loaded measured bounded GGX material in debug mode with assigned texture color");
+            return;
+        }
 
         auto fs            = Thread::thread()->file_resolver();
         fs::path file_path = fs->resolve(props.string("filename"));
@@ -40,10 +52,6 @@ public:
         Field spectra, wavelengths;
         const ScalarFloat rgb_wavelengths[3] = { 0, 1, 2 };
         spectra                              = tf->field("rgb");
-
-        if constexpr (!is_rgb_v<Spectrum>)
-            Throw("Measurements in RGB format require the use of a RGB variant "
-                  "of Mitsuba!");
 
         wavelengths.shape.push_back(3);
         wavelengths.data = rgb_wavelengths;
@@ -128,18 +136,16 @@ public:
         bs.sampled_component = 0;
 
         auto spec = this->eval_m(ctx, si, m, active);
-        // spec *= bounded_ggx.kiz_root(wi);
-        // spec /= bounded_ggx.ndf_supplementary(m) * dr::dot(wi, m) * 4 * Frame3f::cos_theta(wi);
-        // spec /= bounded_ggx.smith_g(wi, wo, m);
+        bs.pdf = this->pdf(ctx, si, wo, active);
 
-        // bs.wo.x() = dr::mulsign_neg(bs.wo.x(), -1.f);
-        // bs.wo.y() = dr::mulsign_neg(bs.wo.y(), -1.f);
+        if (this->m_specular_reflectance) {
+            spec *= bounded_ggx.smith_g1(wo, m);
+        }
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
-        bs.pdf = this->pdf(ctx, si, wo, active);
         active &= bs.pdf > 0;
 
-        return { bs, (depolarizer<Spectrum>(spec) / bs.pdf ) & active };
+        return { bs, (depolarizer<Spectrum>(spec)) & active };
     }
 
     Spectrum eval(const BSDFContext &ctx,
@@ -156,7 +162,7 @@ public:
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
         Float phi_i = dr::atan2(wi.y(), wi.x());
-        Vector3f m = dr::normalize(wo + wi);
+        Vector3f m  = dr::normalize(wo + wi);
 
 #if PHI_M_ISOTROPIC == 1
         const auto theta_m                    = elevation(m);
@@ -167,7 +173,13 @@ public:
                      cos_theta_m);
 #endif
 
-        return this->eval_m(ctx, si, m, active);
+        auto spec = this->eval_m(ctx, si, m, active);
+        if (m_specular_reflectance) {
+            const BoundedGGX bounded_ggx(this->m_alpha);
+            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi) * Frame3f::cos_theta(wo));
+        }
+
+        return spec;
     }
 
     Spectrum eval_m(const BSDFContext &ctx,
@@ -180,24 +192,34 @@ public:
         }
         const auto bounded_ggx = BoundedGGX(this->m_alpha);
 
-        const Vector3f wi = si.wi;
+        const Vector3f wi  = si.wi;
         const auto sample2 = bounded_ggx.invert(wi, m);
         const auto sample  = Point2f(sample2.y(), sample2.x());
 
         Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
+
         UnpolarizedSpectrum spec;
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
-            Float params_spec[3] = { phi_i, theta_i,
+            Float params_spec[3] = { 0, theta_i,
                                      Float(static_cast<float>(i)) };
-            spec[i] = this->m_spectra.eval(sample, params_spec, active);
-            // spec[i] = 1;
+            if (!m_specular_reflectance) {
+                spec[i] = this->m_spectra.eval(sample, params_spec, active);
+            } else {
+                spec[i] = 1;
+            }
         }
 
-        const Vector3f wo = dr::normalize(dr::fmsub(m, 2.f * dr::dot(m, wi), wi));
+        if (m_specular_reflectance) {
+            spec *= m_specular_reflectance->eval(si, active);
+        }
+
+        const Vector3f wo =
+            dr::normalize(dr::fmsub(m, 2.f * dr::dot(m, wi), wi));
         const auto theta_o = elevation(wo);
-        // spec *= bounded_ggx.ndf_supplementary(m) / (4 * bounded_ggx.sigma(theta_i));
-        // spec *= bounded_ggx.ndf_supplementary(m) / (4 * Frame3f::cos_theta(wi));
-        spec /= bounded_ggx.smith_g(wi, wo, m);
+        // spec *= bounded_ggx.ndf_supplementary(m) / (4 *
+        // bounded_ggx.sigma(theta_i)); spec *= bounded_ggx.ndf_supplementary(m)
+        // / (4 * Frame3f::cos_theta(wi)); spec /= bounded_ggx.smith_g(wi, wo,
+        // m);
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -221,9 +243,8 @@ public:
 
         const auto vndf_pdf = bounded_ggx.pdf(wi, wo);
         const auto u_m      = bounded_ggx.invert(wi, m);
-        const auto theta_i = elevation(wi);
-        const auto jacobian =
-            /*dr::maximum(Frame3f::sin_theta(m), 1e-6f) **/ 4.f * bounded_ggx.sigma(theta_i);
+        const auto theta_i  = elevation(wi);
+        const auto jacobian = dr::maximum(Frame3f::sin_theta(m), 1e-6f);
 
         const auto pdf = vndf_pdf;
 
@@ -257,9 +278,9 @@ private:
         return (phi + dr::Pi<Float>) *dr::InvTwoPi<Float>;
     }
 
-private:
     Warp2D3 m_spectra;
     float m_alpha;
+    ref<Texture> m_specular_reflectance;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(MeasuredGGXBounded, BSDF)
