@@ -139,7 +139,8 @@ public:
         bs.pdf = this->pdf(ctx, si, wo, active);
 
         if (this->m_specular_reflectance) {
-            spec *= bounded_ggx.smith_g1(wo, m);
+            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
+            spec /= bs.pdf;
         }
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
@@ -176,7 +177,7 @@ public:
         auto spec = this->eval_m(ctx, si, m, active);
         if (m_specular_reflectance) {
             const BoundedGGX bounded_ggx(this->m_alpha);
-            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi) * Frame3f::cos_theta(wo));
+            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
         }
 
         return spec;
@@ -213,14 +214,6 @@ public:
             spec *= m_specular_reflectance->eval(si, active);
         }
 
-        const Vector3f wo =
-            dr::normalize(dr::fmsub(m, 2.f * dr::dot(m, wi), wi));
-        const auto theta_o = elevation(wo);
-        // spec *= bounded_ggx.ndf_supplementary(m) / (4 *
-        // bounded_ggx.sigma(theta_i)); spec *= bounded_ggx.ndf_supplementary(m)
-        // / (4 * Frame3f::cos_theta(wi)); spec /= bounded_ggx.smith_g(wi, wo,
-        // m);
-
         return depolarizer<Spectrum>(spec) & active;
     }
 
@@ -237,18 +230,10 @@ public:
         const BoundedGGX bounded_ggx(this->m_alpha);
 
         const Vector3f wi = si.wi, &wo = wo_;
-
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
-        Vector3f m = dr::normalize(wo + wi);
 
         const auto vndf_pdf = bounded_ggx.pdf(wi, wo);
-        const auto u_m      = bounded_ggx.invert(wi, m);
-        const auto theta_i  = elevation(wi);
-        const auto jacobian = dr::maximum(Frame3f::sin_theta(m), 1e-6f);
-
-        const auto pdf = vndf_pdf;
-
-        return dr::select(active, pdf, 0.f);
+        return dr::select(active, vndf_pdf, 0.f);
     }
 
     std::string to_string() const override {

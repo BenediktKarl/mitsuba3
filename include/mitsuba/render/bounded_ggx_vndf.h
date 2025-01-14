@@ -15,12 +15,9 @@ public:
     MI_IMPORT_TYPES();
 
     explicit BoundedGGX(const float alpha, const float epsilon = 1e-3)
-        : m_alpha(alpha), m_epsilon(epsilon) {
-        this->m_alpha2     = this->m_alpha * this->m_alpha;
-        this->m_alpha4     = this->m_alpha2 * this->m_alpha2;
-        this->m_alpha_inv  = 1.0 / this->m_alpha;
-        this->m_alpha_inv2 = this->m_alpha_inv * this->m_alpha_inv;
-    }
+        : m_alpha(alpha), m_epsilon(epsilon), m_alpha2(alpha * alpha),
+          m_alpha4(alpha * alpha * alpha * alpha), m_alpha_inv(1.f / alpha),
+          m_alpha_inv2(1.f / (alpha * alpha)) {}
 
     Normal3f sample(const Vector3f &wi,
                     const Float &sample_phi,
@@ -39,9 +36,8 @@ public:
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        Float lower_bound =
-            dr::select(wi.z() > 0.f, -k * i_std.z(), -i_std.z());
-        Float z = dr::fmadd(lower_bound, u2, 1.f - u2);
+        Float b = k * i_std.z();
+        Float z = dr::fmadd(1.f - u2, 1.f + b, -b);
 
         Float sin_theta = dr::sqrt(dr::clip(1 - z * z, 0, 1));
         Vector3f o_std =
@@ -86,10 +82,9 @@ public:
         Float Nx = m.x(), Ny = m.y(), Nz = m.z();
         Float Ix = i_std.x(), Iy = i_std.y(), Iz = i_std.z();
 
-
         Float denom = (Nx * Nx + Ny * Ny) * m_alpha_inv2 + Nz * Nz;
         Float numer = 2.0 * ((Ix * Nx + Iy * Ny) * m_alpha_inv + Iz * Nz);
-        Float lam = numer / denom;
+        Float lam   = numer / denom;
 
         Float ox = lam * Nx * m_alpha_inv - Ix;
         Float oy = lam * Ny * m_alpha_inv - Iy;
@@ -124,7 +119,8 @@ public:
         return dr::cos(theta) * (1.f + this->lambda(theta));
     }
 
-    Float smith_g(const Vector3f &wi, const Vector3f &wo, const Vector3f &m) const {
+    Float
+    smith_g(const Vector3f &wi, const Vector3f &wo, const Vector3f &m) const {
         return this->smith_g1(wi, m) * this->smith_g1(wo, m);
     }
 
@@ -171,13 +167,9 @@ public:
         return dr::select(m.z() > 0, 1.f / denominator, 0);
     }
 
-    float alpha() const {
-        return this->m_alpha;
-    }
+    float alpha() const { return this->m_alpha; }
 
-    float epsilon() const {
-        return this->m_epsilon;
-    }
+    float epsilon() const { return this->m_epsilon; }
 
     friend std::ostream &operator<<(std::ostream &os, const BoundedGGX &ggx) {
         os << "BoundedGGX[\n";
@@ -189,7 +181,8 @@ public:
 
 private:
     Float clip_uniform(const Float &u) const {
-        return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
+        return u;
+        // return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
     }
 
     float m_alpha;
