@@ -138,10 +138,12 @@ public:
         auto spec = this->eval_m(ctx, si, m, active);
         bs.pdf = this->pdf(ctx, si, wo, active);
 
-        if (this->m_specular_reflectance) {
+        // if (this->m_specular_reflectance) {
             spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
             spec /= bs.pdf;
-        }
+        // } else {
+        //     spec *= bounded_ggx.ndf_supplementary(m) / (4.f * bounded_ggx.sigma(elevation(wi)));
+        // }
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
         active &= bs.pdf > 0;
@@ -175,10 +177,12 @@ public:
 #endif
 
         auto spec = this->eval_m(ctx, si, m, active);
-        if (m_specular_reflectance) {
-            const BoundedGGX bounded_ggx(this->m_alpha);
+        const BoundedGGX bounded_ggx(this->m_alpha);
+        // if (m_specular_reflectance) {
             spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
-        }
+        // } else {
+            // spec *= bounded_ggx.ndf_supplementary(m) / (4.f * bounded_ggx.sigma(elevation(si.wi)));
+        // }
 
         return spec;
     }
