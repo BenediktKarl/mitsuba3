@@ -163,6 +163,10 @@ public:
               Throw("Invalid file structure: %s", tf);
 
         m_isotropic = phi_i.shape[0] <= 2;
+        if (props.has_property("isotropic")) {
+            m_isotropic = props.get("isotropic", false);
+        }
+
         m_jacobian  = ((uint8_t *) jacobian.data)[0];
 
         if (!m_isotropic) {
@@ -378,7 +382,7 @@ public:
                  u_m (theta2u(theta_m), phi2u(
                      m_isotropic ? (phi_m - phi_i) : phi_m));
 
-        u_m[1] = u_m[1] - dr::floor(u_m[1]);
+        // u_m[1] = u_m[1] - dr::floor(u_m[1]);
 
         Float params[2] = { phi_i, theta_i };
         auto [sample, unused] = m_vndf.invert(u_m, params, active);

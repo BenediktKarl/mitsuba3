@@ -181,8 +181,7 @@ public:
 
 private:
     Float clip_uniform(const Float &u) const {
-        return u;
-        // return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
+        return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
     }
 
     float m_alpha;

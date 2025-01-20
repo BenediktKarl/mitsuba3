@@ -6,12 +6,12 @@
 #include <mitsuba/core/tensor.h>
 #include <mitsuba/core/warp.h>
 #include <mitsuba/render/bounded_ggx_vndf.h>
-#include <mitsuba/render/texture.h>
 #include <mitsuba/render/bsdf.h>
+#include <mitsuba/render/texture.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
-#define PHI_M_ISOTROPIC 0
+#define PHI_M_ISOTROPIC 1
 
 template <typename Float, typename Spectrum>
 class MeasuredGGXBounded final : public BSDF<Float, Spectrum> {
@@ -33,9 +33,11 @@ public:
                   "of Mitsuba!");
 
         if (props.has_property("specular_reflectance")) {
-            m_specular_reflectance = props.texture<Texture>("specular_reflectance", 1.f);
+            m_specular_reflectance =
+                props.texture<Texture>("specular_reflectance", 1.f);
             m_alpha = props.get("alpha", 0.5f);
-            Log(Info, "Loaded measured bounded GGX material in debug mode with assigned texture color");
+            Log(Info, "Loaded measured bounded GGX material in debug mode with "
+                      "assigned texture color");
             return;
         }
 
@@ -117,33 +119,32 @@ public:
         const BoundedGGX bounded_ggx(this->m_alpha);
 
         Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
-        Normal3f m = bounded_ggx.sample(wi, sample2.y(), sample2.x());
+        Normal3f spectrum_m = bounded_ggx.sample(wi, sample2.y(), sample2.x());
+        Normal3f reflection_m(spectrum_m);
 
 #if PHI_M_ISOTROPIC == 1
-        const auto theta_m                    = elevation(m);
-        const auto phi_m                      = dr::atan2(m.y(), m.x());
+        const auto theta_m = elevation(reflection_m);
+        const auto phi_m   = dr::atan2(reflection_m.y(), reflection_m.x());
         const auto [sin_theta_m, cos_theta_m] = dr::sincos(theta_m);
         const auto [sin_phi_m, cos_phi_m]     = dr::sincos(phi_m + phi_i);
-        m = Vector3f(cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m,
-                     cos_theta_m);
+        reflection_m = Vector3f(cos_phi_m * sin_theta_m,
+                                sin_phi_m * sin_theta_m, cos_theta_m);
 #endif
 
-        Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
+        Vector3f wo = dr::fmsub(reflection_m, 2.f * dr::dot(reflection_m, wi), wi);
 
         bs.wo                = wo;
         bs.eta               = 1.f;
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        auto spec = this->eval_m(ctx, si, m, active);
-        bs.pdf = this->pdf(ctx, si, wo, active);
+        bs.wo.x() = dr::mulsign_neg(bs.wo.x(), -1.f);
+        bs.wo.y() = dr::mulsign_neg(bs.wo.y(), -1.f);
 
-        // if (this->m_specular_reflectance) {
-            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
-            spec /= bs.pdf;
-        // } else {
-        //     spec *= bounded_ggx.ndf_supplementary(m) / (4.f * bounded_ggx.sigma(elevation(wi)));
-        // }
+        auto spec = this->eval_m(ctx, si, sample2, active);
+        bs.pdf    = this->pdf(ctx, si, wo, active);
+
+        spec /= bs.pdf;
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
         active &= bs.pdf > 0;
@@ -165,47 +166,42 @@ public:
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
         Float phi_i = dr::atan2(wi.y(), wi.x());
+        Float phi_o = dr::atan2(wo.y(), wi.x());
         Vector3f m  = dr::normalize(wo + wi);
 
 #if PHI_M_ISOTROPIC == 1
         const auto theta_m                    = elevation(m);
         const auto phi_m                      = dr::atan2(m.y(), m.x());
         const auto [sin_theta_m, cos_theta_m] = dr::sincos(theta_m);
-        const auto [sin_phi_m, cos_phi_m]     = dr::sincos(phi_m - phi_i);
+        const auto [sin_phi_m, cos_phi_m]     = dr::sincos(phi_m - phi_o);
         m = Vector3f(cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m,
                      cos_theta_m);
 #endif
 
-        auto spec = this->eval_m(ctx, si, m, active);
-        const BoundedGGX bounded_ggx(this->m_alpha);
-        // if (m_specular_reflectance) {
-            spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi, wo, m) / (4.f * Frame3f::cos_theta(si.wi));
-        // } else {
-            // spec *= bounded_ggx.ndf_supplementary(m) / (4.f * bounded_ggx.sigma(elevation(si.wi)));
-        // }
+        const auto bounded_ggx = BoundedGGX(this->m_alpha);
+        const auto sample2 = bounded_ggx.invert(wi, m);
+        const auto sample  = Point2f(sample2.y(), sample2.x());
 
+        auto spec = this->eval_m(ctx, si, sample, active);
         return spec;
     }
 
     Spectrum eval_m(const BSDFContext &ctx,
                     const SurfaceInteraction3f &si,
-                    const Vector3f &m,
+                    const Vector2f &sample,
                     Mask active) const {
         if (!ctx.is_enabled(BSDFFlags::GlossyReflection) ||
             dr::none_or<false>(active)) {
             return Spectrum(0.f);
         }
-        const auto bounded_ggx = BoundedGGX(this->m_alpha);
 
         const Vector3f wi  = si.wi;
-        const auto sample2 = bounded_ggx.invert(wi, m);
-        const auto sample  = Point2f(sample2.y(), sample2.x());
 
         Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
 
         UnpolarizedSpectrum spec;
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
-            Float params_spec[3] = { 0, theta_i,
+            Float params_spec[3] = { phi_i, theta_i,
                                      Float(static_cast<float>(i)) };
             if (!m_specular_reflectance) {
                 spec[i] = this->m_spectra.eval(sample, params_spec, active);
@@ -217,6 +213,13 @@ public:
         if (m_specular_reflectance) {
             spec *= m_specular_reflectance->eval(si, active);
         }
+
+        // if (m_specular_reflectance) {
+        // spec *= bounded_ggx.ndf_supplementary(m) * bounded_ggx.smith_g(wi,
+        // wo, m) / (4.f * Frame3f::cos_theta(si.wi)); } else { spec *=
+        // bounded_ggx.ndf_supplementary(m) / (4.f *
+        // bounded_ggx.sigma(elevation(si.wi)));
+        // }
 
         return depolarizer<Spectrum>(spec) & active;
     }
