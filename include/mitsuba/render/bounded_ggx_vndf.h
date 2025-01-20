@@ -77,7 +77,8 @@ public:
     Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
         const auto &a2 = this->m_alpha2;
         Normal3f i_std = dr::normalize(
-            Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
+            Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha,
+            wi.z()));
 
         Float Nx = m.x(), Ny = m.y(), Nz = m.z();
         Float Ix = i_std.x(), Iy = i_std.y(), Iz = i_std.z();
@@ -103,11 +104,29 @@ public:
         Float u2 = (z - 1.0) / (lower_bound - 1.0);
         Float u1 = phi / (2 * dr::Pi<Float>);
 
-        u1 = clip_uniform(u1);
-        u2 = clip_uniform(u2);
+        // u1 = clip_uniform(u1);
+        // u2 = clip_uniform(u2);
 
         return Vector2f(u1, u2);
     }
+
+    // Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
+    //     const auto s     = 1.f + dr::sqrt(dr::square(wi.x()) * dr::square(wi.y()));
+    //     const auto s2    = dr::square(s);
+    //     const auto a2    = this->m_alpha2;
+    //     const auto k     = (1.f - a2) * s2 / (s2 + a2 * dr::square(wi.z()));
+    //     const auto m_std = dr::normalize(
+    //         Vector3f(m.x() / this->m_alpha, m.y() / this->m_alpha, m.z()));
+    //     const auto i_std = dr::normalize(
+    //         Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
+    //     const auto o_std = dr::fmsub(m_std, 2.f * dr::dot(m_std, i_std), i_std);
+    //     const auto phi_raw = dr::atan2(o_std.y(), o_std.x());
+    //     const auto phi = dr::select(phi_raw < 0.f, phi_raw + 2.f * dr::Pi<Float>, phi_raw);
+    //     const auto lower_bound = -k * i_std.z();
+    //     const auto u2 = (o_std.z() - 1.f) / (lower_bound - 1.f);
+    //     const auto u1 = phi / (dr::Pi<Float> * 2.f);
+    //     return Vector2f(u1, u2);
+    // }
 
     Float lambda(const Float &theta) const {
         const Float a   = 1.f / (this->m_alpha * dr::tan(theta));
@@ -181,7 +200,8 @@ public:
 
 private:
     Float clip_uniform(const Float &u) const {
-        return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
+        return u;
+        // return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
     }
 
     float m_alpha;
