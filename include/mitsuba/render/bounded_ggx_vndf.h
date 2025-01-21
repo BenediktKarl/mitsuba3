@@ -104,8 +104,8 @@ public:
         Float u2 = (z - 1.0) / (lower_bound - 1.0);
         Float u1 = phi / (2 * dr::Pi<Float>);
 
-        // u1 = clip_uniform(u1);
-        // u2 = clip_uniform(u2);
+        u1 = clip_uniform(u1);
+        u2 = clip_uniform(u2);
 
         return Vector2f(u1, u2);
     }
@@ -128,10 +128,16 @@ public:
     //     return Vector2f(u1, u2);
     // }
 
+    // Float lambda(const Float &theta) const {
+    //     const Float a   = 1.f / (this->m_alpha * dr::tan(theta));
+    //     Float nominator = -1.f + dr::sqrt(1.f + 1.f / (a * a));
+    //     return nominator / 2.f;
+    // }
+
     Float lambda(const Float &theta) const {
-        const Float a   = 1.f / (this->m_alpha * dr::tan(theta));
-        Float nominator = -1.f + dr::sqrt(1.f + 1.f / (a * a));
-        return nominator / 2.f;
+        Float tan2Theta = dr::square(dr::tan(theta));
+        const Float nominator = dr::sqrt(1 + this->m_alpha2 * tan2Theta) - 1;
+        return dr::select(dr::isinf(tan2Theta), 0.f, nominator / 2.f);
     }
 
     Float sigma(const Float &theta) const {
