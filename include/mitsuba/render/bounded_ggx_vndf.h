@@ -36,8 +36,8 @@ public:
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        Float b = k * i_std.z();
-        Float z = dr::fmadd(1.f - u2, 1.f + b, -b);
+        Float lower_bound = -k * i_std.z();
+        Float z = dr::fmadd(lower_bound, sample_theta, 1.f - sample_theta);
 
         Float sin_theta = dr::sqrt(dr::clip(1 - z * z, 0, 1));
         Vector3f o_std =
@@ -77,8 +77,7 @@ public:
     Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
         const auto &a2 = this->m_alpha2;
         Normal3f i_std = dr::normalize(
-            Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha,
-            wi.z()));
+            Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
 
         Float Nx = m.x(), Ny = m.y(), Nz = m.z();
         Float Ix = i_std.x(), Iy = i_std.y(), Iz = i_std.z();
@@ -110,32 +109,8 @@ public:
         return Vector2f(u1, u2);
     }
 
-    // Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
-    //     const auto s     = 1.f + dr::sqrt(dr::square(wi.x()) * dr::square(wi.y()));
-    //     const auto s2    = dr::square(s);
-    //     const auto a2    = this->m_alpha2;
-    //     const auto k     = (1.f - a2) * s2 / (s2 + a2 * dr::square(wi.z()));
-    //     const auto m_std = dr::normalize(
-    //         Vector3f(m.x() / this->m_alpha, m.y() / this->m_alpha, m.z()));
-    //     const auto i_std = dr::normalize(
-    //         Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
-    //     const auto o_std = dr::fmsub(m_std, 2.f * dr::dot(m_std, i_std), i_std);
-    //     const auto phi_raw = dr::atan2(o_std.y(), o_std.x());
-    //     const auto phi = dr::select(phi_raw < 0.f, phi_raw + 2.f * dr::Pi<Float>, phi_raw);
-    //     const auto lower_bound = -k * i_std.z();
-    //     const auto u2 = (o_std.z() - 1.f) / (lower_bound - 1.f);
-    //     const auto u1 = phi / (dr::Pi<Float> * 2.f);
-    //     return Vector2f(u1, u2);
-    // }
-
-    // Float lambda(const Float &theta) const {
-    //     const Float a   = 1.f / (this->m_alpha * dr::tan(theta));
-    //     Float nominator = -1.f + dr::sqrt(1.f + 1.f / (a * a));
-    //     return nominator / 2.f;
-    // }
-
     Float lambda(const Float &theta) const {
-        Float tan2Theta = dr::square(dr::tan(theta));
+        Float tan2Theta       = dr::square(dr::tan(theta));
         const Float nominator = dr::sqrt(1 + this->m_alpha2 * tan2Theta) - 1;
         return dr::select(dr::isinf(tan2Theta), 0.f, nominator / 2.f);
     }
@@ -192,9 +167,120 @@ public:
         return dr::select(m.z() > 0, 1.f / denominator, 0);
     }
 
-    float alpha() const { return this->m_alpha; }
+    [[nodiscard]] float alpha() const { return this->m_alpha; }
 
-    float epsilon() const { return this->m_epsilon; }
+    [[nodiscard]] float epsilon() const { return this->m_epsilon; }
+
+    Float theta2u(Float theta) const {
+        return dr::sqrt(theta * (2.f / dr::Pi<Float>) );
+    }
+
+    Float s(Float ix, Float iy) const {
+        return 1 + dr::sqrt(ix * ix + iy * iy);
+    }
+
+    Float k(Float s, Float z_i) const {
+        const auto a2 = this->m_alpha2;
+        const auto s2 = s * s;
+        return (1.f - a2) * s2 / (s2 + a2 * z_i * z_i);
+    }
+
+    Float z_i_std(Float ix, Float iy, Float iz) const {
+        const auto ax  = this->m_alpha * ix;
+        const auto ay  = this->m_alpha * iy;
+        const auto len = dr::sqrt(ax * ax + ay * ay + iz * iz);
+        return iz / len;
+    }
+
+    Float lower_bound(Float k, Float z_i_std) const { return -k * z_i_std; }
+
+    Float z(Float u, Float lb) const { return dr::fmadd(lb, u, 1.f - lb); }
+
+    // Float theta_jacobian(Float u, const Vector3f &wi) const {
+    //     const auto ix = wi.x(), iy = wi.y(), iz = wi.z();
+    //     const auto k_val = k(s(ix, iy), z_i_std(ix, iy, iz));
+    //
+    //     const auto nominator = iz * k_val + 1;
+    //     const auto denominator =
+    //         dr::sqrt(-dr::square(u * iz * k_val + u - 1) + 1);
+    //
+    //     return nominator / denominator;
+    // }
+
+    Float theta_jacobian(const Float &u, const Vector3f &wi) const {
+        // Variables you need to define/assign elsewhere
+        Vector3f i_std = dr::normalize(
+            Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
+        Float s = this->s(wi.x(), wi.y());
+        Float k = this->k(s, wi.z());
+
+        Float lambda_ = lower_bound(k, i_std.z()); // e.g. lambda_ = ...
+        Float alpha   = this->m_alpha;             // e.g. alpha  = ...
+        Float i_std_x = i_std.x();                 // e.g. i_std_x = ...
+        Float i_std_y = i_std.y();                 // e.g. i_std_y = ...
+
+        // Example pi definition (if not already available in your code)
+        const Float pi = dr::Pi<Float>;
+
+        // 1) Common subexpressions
+        //    A = lambda_*u^2 - u^2 + 1 = (lambda_ - 1)*u^2 + 1
+        Float u2 = u * u;
+        Float A  = (lambda_ - Float(1)) * u2 + Float(1);
+
+        // 2) B = sqrt(1 - A^2)
+        Float A2 = A * A;
+        Float B  = sqrt(Float(1) - A2);
+
+        // 3) C = 2 * pi * u^2
+        Float C    = Float(2) * pi * u2;
+        Float cosC = cos(C);
+        Float sinC = sin(C);
+
+        // 4) D = lambda_*u - u = u*(lambda_ - 1)
+        Float D = u * (lambda_ - Float(1));
+
+        // 5) E = B*cosC + i_std_x
+        //    F = B*sinC + i_std_y
+        Float E = B * cosC + i_std_x;
+        Float F = B * sinC + i_std_y;
+
+        // 6) G = A + i_std_x  (since A = (lambda_*u^2 - u^2 + 1))
+        Float G = A + i_std_x;
+
+        // 7) H = (E^2 + F^2)*alpha^2 + G^2
+        //    then we need H^(3/2) and sqrt(H)
+        Float E2     = E * E;
+        Float F2     = F * F;
+        Float G2     = G * G;
+        Float alpha2 = alpha * alpha;
+
+        Float H     = (E2 + F2) * alpha2 + G2;
+        Float sqrtH = sqrt(H);
+        Float H32   = H * sqrtH; // H^(3/2)
+
+        // 8) Intermediate terms matching your expression
+        //    term1 = 2*pi*B*u*sinC + (A*D*cosC)/B
+        //    term2 = 2*pi*B*u*cosC - (A*D*sinC)/B
+        Float term1 = Float(2) * pi * B * u * sinC + (A * D * cosC) / B;
+        Float term2 = Float(2) * pi * B * u * cosC - (A * D * sinC) / B;
+
+        // 9) Combine them according to the expression
+        //    bracket = term1*E*alpha^2 - term2*F*alpha^2 - G*D
+        Float bracket = term1 * E * alpha2 - term2 * F * alpha2 - G * D;
+
+        // 10) The big fraction part:
+        //     2 * ((bracket) * G) / H^(3/2)
+        Float fractionPart = Float(2) * (bracket * G) / H32;
+
+        // 11) The additional term:
+        //     2 * D / sqrt(H)
+        Float additionalTerm = Float(2) * D / sqrtH;
+
+        // 12) Final result = fractionPart + additionalTerm
+        Float result = fractionPart + additionalTerm;
+
+        return result;
+    }
 
     friend std::ostream &operator<<(std::ostream &os, const BoundedGGX &ggx) {
         os << "BoundedGGX[\n";
@@ -202,6 +288,18 @@ public:
         os << "\tepsilon=" << ggx.m_epsilon << "\n";
         os << "]" << std::endl;
         return os;
+    }
+
+    Float u_to_param(Float u) const {
+        return dr::square(u);
+    }
+
+    Float param_to_u(Float p) const {
+        return dr::sqrt(p);
+    }
+
+    Float param_jacobian(Float p) const {
+        return 1 / (2.f * p);
     }
 
 private:

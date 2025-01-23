@@ -39,6 +39,8 @@ public:
             return;
         }
 
+        this->m_use_parameterization = props.get("use_parameterization", false);
+
         auto fs            = Thread::thread()->file_resolver();
         fs::path file_path = fs->resolve(props.string("filename"));
 
@@ -122,17 +124,30 @@ public:
         auto sample_phi = sample2.y() + phi_i / (2.f * dr::Pi<Float>);
         sample_phi      = sample_phi - dr::floor(sample_phi);
 
-        Normal3f m = bounded_ggx.sample(wi, sample_phi, sample2.x());
+        auto sample_theta = sample2.x();
+        if (this->m_use_parameterization) {
+            sample_theta = bounded_ggx.u_to_param(sample_theta);
+        }
 
-        Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
+        Normal3f m     = bounded_ggx.sample(wi, sample_phi, sample_theta);
+        Normal3f pdf_m = bounded_ggx.sample(wi, sample_phi, sample2.x());
+
+        Vector3f wo     = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
+        Vector3f pdf_wo = dr::fmsub(pdf_m, 2.f * dr::dot(pdf_m, wo), wi);
 
         bs.wo                = wo;
         bs.eta               = 1.f;
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        auto spec = this->eval_m(ctx, si, m, bs.wo, sample2, active);
-        bs.pdf    = bounded_ggx.pdf(wi, wo);
+        auto spec = this->eval_m(ctx, si, m, bs.wo,
+                                 { sample_theta, sample2.y() }, active);
+
+        Float jacobian = 1.f;
+        if (this->m_use_parameterization) {
+            jacobian = bounded_ggx.param_jacobian(sample2.x());
+        }
+        bs.pdf = bounded_ggx.pdf(wi, wo) * jacobian;
 
         spec /= bs.pdf;
 
@@ -164,6 +179,11 @@ public:
         const auto sample2     = bounded_ggx.invert(wi, m);
 
         auto sample = Point2f(sample2.y(), sample2.x());
+
+        if (this->m_use_parameterization) {
+            sample.x() = bounded_ggx.param_to_u(sample.x());
+        }
+
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
 
@@ -225,7 +245,15 @@ public:
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
-        const auto vndf_pdf = bounded_ggx.pdf(wi, wo);
+        const auto m      = dr::normalize(wi + wo);
+        const auto sample = bounded_ggx.invert(wo, wi);
+
+        Float jacobian = 1.f;
+        if (m_use_parameterization) {
+            jacobian = bounded_ggx.param_jacobian(bounded_ggx.param_to_u(sample.y()));
+        }
+
+        const auto vndf_pdf = bounded_ggx.pdf(wi, wo) * jacobian;
         return dr::select(active, vndf_pdf, 0.f);
     }
 
@@ -258,6 +286,7 @@ private:
 
     Warp2D3 m_spectra;
     float m_alpha;
+    bool m_use_parameterization;
     ref<Texture> m_specular_reflectance;
 };
 

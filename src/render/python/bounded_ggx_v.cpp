@@ -34,5 +34,9 @@ MI_PY_EXPORT(BoundedGGX) {
         .def("ndf_supplementary", &BoundedGGX::ndf_supplementary, "m"_a)
         .def("alpha", &BoundedGGX::alpha)
         .def("epsilon", &BoundedGGX::epsilon)
+        .def("theta_jacobian", &BoundedGGX::theta_jacobian, "u"_a, "wi"_a)
+        .def("u_to_param", &BoundedGGX::u_to_param, "u"_a)
+        .def("param_to_u", &BoundedGGX::param_to_u, "p"_a)
+        .def("param_jacobian", &BoundedGGX::param_jacobian, "p"_a)
         .def_repr(BoundedGGX);
 }
