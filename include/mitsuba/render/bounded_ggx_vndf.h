@@ -57,6 +57,11 @@ public:
         return k * wi.z() + dr::sqrt(a2 * wi2.x() + a2 * wi2.y() + wi2.z());
     }
 
+    Float pdf_m(const Vector3f &wi, const Vector3f &m) const {
+        const auto wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
+        return this->pdf(wi, wo);
+    }
+
     Float pdf(const Vector3f &wi, const Vector3f &wo) const {
         Normal3f m  = dr::normalize(wi + wo);
         Float ndf   = this->ndf_supplementary(m);
@@ -196,90 +201,14 @@ public:
 
     Float z(Float u, Float lb) const { return dr::fmadd(lb, u, 1.f - lb); }
 
-    // Float theta_jacobian(Float u, const Vector3f &wi) const {
-    //     const auto ix = wi.x(), iy = wi.y(), iz = wi.z();
-    //     const auto k_val = k(s(ix, iy), z_i_std(ix, iy, iz));
-    //
-    //     const auto nominator = iz * k_val + 1;
-    //     const auto denominator =
-    //         dr::sqrt(-dr::square(u * iz * k_val + u - 1) + 1);
-    //
-    //     return nominator / denominator;
-    // }
+    Float theta_jacobian(const Vector3f &m, const Vector3f &m_prime) const {
+        const auto theta_m = this->elevation(m);
+        const auto theta_m_prime = this->elevation(m_prime);
 
-    Float theta_jacobian(const Float &u, const Vector3f &wi) const {
-        // Variables you need to define/assign elsewhere
-        Vector3f i_std = dr::normalize(
-            Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
-        Float s = this->s(wi.x(), wi.y());
-        Float k = this->k(s, wi.z());
+        const auto sin_theta_m = dr::sin(theta_m);
+        const auto sin_theta_m_prime = dr::sin(theta_m_prime);
 
-        Float lambda_ = lower_bound(k, i_std.z()); // e.g. lambda_ = ...
-        Float alpha   = this->m_alpha;             // e.g. alpha  = ...
-        Float i_std_x = i_std.x();                 // e.g. i_std_x = ...
-        Float i_std_y = i_std.y();                 // e.g. i_std_y = ...
-
-        // Example pi definition (if not already available in your code)
-        const Float pi = dr::Pi<Float>;
-
-        // 1) Common subexpressions
-        //    A = lambda_*u^2 - u^2 + 1 = (lambda_ - 1)*u^2 + 1
-        Float u2 = u * u;
-        Float A  = (lambda_ - Float(1)) * u2 + Float(1);
-
-        // 2) B = sqrt(1 - A^2)
-        Float A2 = A * A;
-        Float B  = sqrt(Float(1) - A2);
-
-        // 3) C = 2 * pi * u^2
-        Float C    = Float(2) * pi * u2;
-        Float cosC = cos(C);
-        Float sinC = sin(C);
-
-        // 4) D = lambda_*u - u = u*(lambda_ - 1)
-        Float D = u * (lambda_ - Float(1));
-
-        // 5) E = B*cosC + i_std_x
-        //    F = B*sinC + i_std_y
-        Float E = B * cosC + i_std_x;
-        Float F = B * sinC + i_std_y;
-
-        // 6) G = A + i_std_x  (since A = (lambda_*u^2 - u^2 + 1))
-        Float G = A + i_std_x;
-
-        // 7) H = (E^2 + F^2)*alpha^2 + G^2
-        //    then we need H^(3/2) and sqrt(H)
-        Float E2     = E * E;
-        Float F2     = F * F;
-        Float G2     = G * G;
-        Float alpha2 = alpha * alpha;
-
-        Float H     = (E2 + F2) * alpha2 + G2;
-        Float sqrtH = sqrt(H);
-        Float H32   = H * sqrtH; // H^(3/2)
-
-        // 8) Intermediate terms matching your expression
-        //    term1 = 2*pi*B*u*sinC + (A*D*cosC)/B
-        //    term2 = 2*pi*B*u*cosC - (A*D*sinC)/B
-        Float term1 = Float(2) * pi * B * u * sinC + (A * D * cosC) / B;
-        Float term2 = Float(2) * pi * B * u * cosC - (A * D * sinC) / B;
-
-        // 9) Combine them according to the expression
-        //    bracket = term1*E*alpha^2 - term2*F*alpha^2 - G*D
-        Float bracket = term1 * E * alpha2 - term2 * F * alpha2 - G * D;
-
-        // 10) The big fraction part:
-        //     2 * ((bracket) * G) / H^(3/2)
-        Float fractionPart = Float(2) * (bracket * G) / H32;
-
-        // 11) The additional term:
-        //     2 * D / sqrt(H)
-        Float additionalTerm = Float(2) * D / sqrtH;
-
-        // 12) Final result = fractionPart + additionalTerm
-        Float result = fractionPart + additionalTerm;
-
-        return result;
+        return dr::Pi<Float> * sin_theta_m / (4 * theta_m * sin_theta_m_prime);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const BoundedGGX &ggx) {
@@ -290,16 +219,52 @@ public:
         return os;
     }
 
-    Float u_to_param(Float u) const {
-        return dr::square(u);
+    Vector3f warp_microfacet(const Vector3f &microfacet) const {
+        Vector3f m = microfacet;
+        auto m_sph = this->cartesian_to_spherical(m);
+        auto phi_m = m_sph.x();
+        auto theta_m = m_sph.y();
+
+        Float sin_theta_m = dr::sin(theta_m);
+        Float cos_theta_m = dr::cos(theta_m);
+
+        // Warp towards geometric normal
+        sin_theta_m *= sin_theta_m;
+        theta_m = dr::asin(sin_theta_m);
+
+        return this->spherical_to_cartesian({phi_m, theta_m});
     }
 
-    Float param_to_u(Float p) const {
-        return dr::sqrt(p);
+    Vector3f unwarp_microfacet(const Vector3f &microfacet) const {
+        Vector3f m = microfacet;
+        auto m_sph = this->cartesian_to_spherical(m);
+        auto phi_m = m_sph.x();
+        auto theta_m = m_sph.y();
+
+        Float sin_theta_m = dr::sin(theta_m);
+        Float cos_theta_m = dr::cos(theta_m);
+
+        // Reverse warp
+        sin_theta_m = dr::sqrt(sin_theta_m);
+        theta_m = dr::asin(sin_theta_m);
+
+        return this->spherical_to_cartesian({phi_m, theta_m});
     }
 
-    Float param_jacobian(Float p) const {
-        return 1 / (2.f * p);
+    Vector3f spherical_to_cartesian(const Vector2f& spherical) const {
+        auto phi = spherical.x();
+        auto theta = spherical.y();
+
+        auto [sin_phi_m, cos_phi_m] = dr::sincos(phi);
+        auto [sin_theta_m, cos_theta_m] = dr::sincos(theta);
+
+        return {cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m, cos_theta_m};
+    }
+
+    Vector2f cartesian_to_spherical(const Vector3f &cartesian) const {
+        auto phi = dr::atan2(cartesian.y(), cartesian.x());
+        auto theta = this->elevation(cartesian);
+        return {phi, theta};
     }
 
 private:

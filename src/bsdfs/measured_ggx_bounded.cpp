@@ -40,6 +40,8 @@ public:
         }
 
         this->m_use_parameterization = props.get("use_parameterization", false);
+        this->m_disable_sample       = props.get("disable_sample", false);
+        this->m_disable_eval         = props.get("disable_eval", false);
 
         auto fs            = Thread::thread()->file_resolver();
         fs::path file_path = fs->resolve(props.string("filename"));
@@ -118,22 +120,24 @@ public:
 
         const BoundedGGX bounded_ggx(this->m_alpha);
 
-        Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
+        Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
 
-        auto sample_phi = sample2.y() + phi_i / (2.f * dr::Pi<Float>);
-        sample_phi      = sample_phi - dr::floor(sample_phi);
-
         auto sample_theta = sample2.x();
+        auto sample_phi   = sample2.y() + phi_i / (2.f * dr::Pi<Float>);
+        sample_phi        = sample_phi - dr::floor(sample_phi);
+
+        Float jacobian = 1.f;
+        Normal3f m     = bounded_ggx.sample(wi, sample_phi, sample_theta);
+        Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
+
         if (this->m_use_parameterization) {
-            sample_theta = bounded_ggx.u_to_param(sample_theta);
+            const auto m_prime = bounded_ggx.warp_microfacet(m);
+            jacobian           = bounded_ggx.theta_jacobian(m, m_prime);
+            m                  = m_prime;
         }
 
-        Normal3f m     = bounded_ggx.sample(wi, sample_phi, sample_theta);
-        Normal3f pdf_m = bounded_ggx.sample(wi, sample_phi, sample2.x());
-
-        Vector3f wo     = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
-        Vector3f pdf_wo = dr::fmsub(pdf_m, 2.f * dr::dot(pdf_m, wo), wi);
+        Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
 
         bs.wo                = wo;
         bs.eta               = 1.f;
@@ -142,17 +146,16 @@ public:
 
         auto spec = this->eval_m(ctx, si, m, bs.wo,
                                  { sample_theta, sample2.y() }, active);
-
-        Float jacobian = 1.f;
-        if (this->m_use_parameterization) {
-            jacobian = bounded_ggx.param_jacobian(sample2.x());
-        }
-        bs.pdf = bounded_ggx.pdf(wi, wo) * jacobian;
+        bs.pdf    = vndf_pdf * jacobian;
 
         spec /= bs.pdf;
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
         active &= bs.pdf > 0;
+
+        if (this->m_disable_sample) {
+            active = false;
+        }
 
         return { bs, (depolarizer<Spectrum>(spec)) & active };
     }
@@ -173,21 +176,26 @@ public:
         Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
 
-        Vector3f m = dr::normalize(wo + wi);
-
         const auto bounded_ggx = BoundedGGX(this->m_alpha);
-        const auto sample2     = bounded_ggx.invert(wi, m);
+
+        Vector3f m = dr::normalize(wo + wi);
+        if (this->m_use_parameterization) {
+            m = bounded_ggx.unwarp_microfacet(m);
+        }
+
+        const auto sample2 = bounded_ggx.invert(wi, m);
 
         auto sample = Point2f(sample2.y(), sample2.x());
-
-        if (this->m_use_parameterization) {
-            sample.x() = bounded_ggx.param_to_u(sample.x());
-        }
 
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
 
         auto spec = this->eval_m(ctx, si, m, wo, sample, active);
+
+        if (m_disable_eval) {
+            active = false;
+        }
+
         return spec & active;
     }
 
@@ -245,16 +253,19 @@ public:
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
 
-        const auto m      = dr::normalize(wi + wo);
-        const auto sample = bounded_ggx.invert(wo, wi);
+        Vector3f m = dr::normalize(wi + wo);
 
         Float jacobian = 1.f;
         if (m_use_parameterization) {
-            jacobian = bounded_ggx.param_jacobian(bounded_ggx.param_to_u(sample.y()));
+            const auto m_prime = m;
+            m                  = bounded_ggx.unwarp_microfacet(m_prime);
+            jacobian           = bounded_ggx.theta_jacobian(m, m_prime);
         }
 
-        const auto vndf_pdf = bounded_ggx.pdf(wi, wo) * jacobian;
-        return dr::select(active, vndf_pdf, 0.f);
+        Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
+
+        const auto pdf = vndf_pdf * jacobian;
+        return dr::select(active, pdf, 0.f);
     }
 
     std::string to_string() const override {
@@ -287,6 +298,8 @@ private:
     Warp2D3 m_spectra;
     float m_alpha;
     bool m_use_parameterization;
+    bool m_disable_sample;
+    bool m_disable_eval;
     ref<Texture> m_specular_reflectance;
 };
 

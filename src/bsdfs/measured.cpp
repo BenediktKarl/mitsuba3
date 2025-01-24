@@ -227,6 +227,9 @@ public:
             (const char *) description.data + description.shape[0]
         );
 
+        this->m_disable_sample = props.get("disable_sample", false);
+        this->m_disable_eval   = props.get("disable_eval", false);
+
         Log(Info, "Loaded material \"%s\" (resolution %i x %i x %i x %i x %i)",
             description_str, spectra.shape[0], spectra.shape[1],
             spectra.shape[3], spectra.shape[4], spectra.shape[2]);
@@ -343,6 +346,9 @@ public:
         bs.wo.y() = dr::mulsign_neg(bs.wo.y(), sy);
 
         active &= Frame3f::cos_theta(bs.wo) > 0;
+        if (this->m_disable_sample) {
+            active = false;
+        }
 
         return { bs, (depolarizer<Spectrum>(spec) / bs.pdf) & active };
     }
@@ -398,6 +404,10 @@ public:
         if (m_jacobian)
             spec *= m_ndf.eval(u_m, params, active) /
                     (4 * m_sigma.eval(u_wi, params, active));
+
+        if (m_disable_eval) {
+            active = false;
+        }
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -501,6 +511,9 @@ private:
     bool m_isotropic;
     bool m_jacobian;
     int m_reduction;
+
+    bool m_disable_sample;
+    bool m_disable_eval;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(Measured, BSDF)
