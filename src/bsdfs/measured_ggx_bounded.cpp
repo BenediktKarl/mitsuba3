@@ -68,7 +68,7 @@ public:
               spectra.dtype == Struct::Type::Float32 &&
               spectra.shape.size() == 5 && spectra.shape[0] == phi_i.shape[0] &&
               spectra.shape[1] == theta_i.shape[0] && spectra.shape[2] == 3 &&
-              spectra.shape[3] == spectra.shape[4] &&
+              // spectra.shape[3] == spectra.shape[4] &&
 
               alpha.shape.size() == 1 && alpha.shape[0] == 1))
             Throw("Invalid file structure: %s", tf);
@@ -131,10 +131,11 @@ public:
         Normal3f m     = bounded_ggx.sample(wi, sample_phi, sample_theta);
         Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
 
+        Vector3f m_prime = m;
         if (this->m_use_parameterization) {
-            const auto m_prime = bounded_ggx.warp_microfacet(m);
-            jacobian           = bounded_ggx.theta_jacobian(m, m_prime);
-            m                  = m_prime;
+            m_prime  = bounded_ggx.warp_microfacet(m);
+            jacobian = bounded_ggx.theta_jacobian(m, m_prime);
+            m        = m_prime;
         }
 
         Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
@@ -144,7 +145,7 @@ public:
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        auto spec = this->eval_m(ctx, si, m, bs.wo,
+        auto spec = this->eval_m(ctx, si, m, m_prime, bs.wo,
                                  { sample_theta, sample2.y() }, active);
         bs.pdf    = vndf_pdf * jacobian;
 
@@ -178,9 +179,10 @@ public:
 
         const auto bounded_ggx = BoundedGGX(this->m_alpha);
 
-        Vector3f m = dr::normalize(wo + wi);
+        Vector3f m_prime = dr::normalize(wo + wi);
+        Vector3f m       = m_prime;
         if (this->m_use_parameterization) {
-            m = bounded_ggx.unwarp_microfacet(m);
+            m = bounded_ggx.unwarp_microfacet(m_prime);
         }
 
         const auto sample2 = bounded_ggx.invert(wi, m);
@@ -190,7 +192,7 @@ public:
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
 
-        auto spec = this->eval_m(ctx, si, m, wo, sample, active);
+        auto spec = this->eval_m(ctx, si, m, m_prime, wo, sample, active);
 
         if (m_disable_eval) {
             active = false;
@@ -202,6 +204,7 @@ public:
     Spectrum eval_m(const BSDFContext &ctx,
                     const SurfaceInteraction3f &si,
                     const Vector3f &m,
+                    const Vector3f &m_prime,
                     const Vector3f &wo,
                     const Vector2f &sample,
                     Mask active) const {
@@ -231,9 +234,9 @@ public:
         }
 
         const BoundedGGX bounded_ggx(this->m_alpha);
-        spec *=
-            bounded_ggx.ndf_supplementary(m) /
-            (4 * bounded_ggx.sigma(elevation(wo)) * Frame3f::cos_theta(si.wi));
+        // spec *= dr::Pi<Float> / (4.f * bounded_ggx.elevation(m));
+        // spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
+                // (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
 
         return depolarizer<Spectrum>(spec) & active;
     }

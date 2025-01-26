@@ -225,12 +225,7 @@ public:
         auto phi_m = m_sph.x();
         auto theta_m = m_sph.y();
 
-        Float sin_theta_m = dr::sin(theta_m);
-        Float cos_theta_m = dr::cos(theta_m);
-
-        // Warp towards geometric normal
-        sin_theta_m *= sin_theta_m;
-        theta_m = dr::asin(sin_theta_m);
+        theta_m = 2 * dr::square(theta_m) / dr::Pi<Float>;
 
         return this->spherical_to_cartesian({phi_m, theta_m});
     }
@@ -241,12 +236,7 @@ public:
         auto phi_m = m_sph.x();
         auto theta_m = m_sph.y();
 
-        Float sin_theta_m = dr::sin(theta_m);
-        Float cos_theta_m = dr::cos(theta_m);
-
-        // Reverse warp
-        sin_theta_m = dr::sqrt(sin_theta_m);
-        theta_m = dr::asin(sin_theta_m);
+        theta_m = dr::sqrt(theta_m * dr::Pi<Float> / 2);
 
         return this->spherical_to_cartesian({phi_m, theta_m});
     }

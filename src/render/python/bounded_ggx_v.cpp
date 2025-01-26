@@ -23,6 +23,7 @@ MI_PY_EXPORT(BoundedGGX) {
              "sample_theta"_a)
         .def("kiz_root", &BoundedGGX::kiz_root, "wi"_a)
         .def("pdf", &BoundedGGX::pdf, "wi"_a, "wo"_a)
+        .def("pdf_m", &BoundedGGX::pdf_m, "wi"_a, "m"_a)
         .def("invert", &BoundedGGX::invert, "wi"_a, "m"_a)
         .def("lambda_", &BoundedGGX::lambda, "theta"_a)
         .def("sigma", &BoundedGGX::sigma, "theta"_a)
@@ -40,5 +41,6 @@ MI_PY_EXPORT(BoundedGGX) {
              "spherical"_a)
         .def("cartesian_to_spherical", &BoundedGGX::cartesian_to_spherical,
              "cartesian"_a)
+        .def("theta_jacobian", &BoundedGGX::theta_jacobian, "m"_a, "m_prime"_a)
         .def_repr(BoundedGGX);
 }
