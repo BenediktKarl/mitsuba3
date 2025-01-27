@@ -186,13 +186,14 @@ public:
         }
 
         const auto sample2 = bounded_ggx.invert(wi, m);
+        active &= bounded_ggx.pdf_m(wi, m) > 0;
 
         auto sample = Point2f(sample2.y(), sample2.x());
 
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
 
-        auto spec = this->eval_m(ctx, si, m, m_prime, wo, sample, active);
+        auto spec = this->eval_m(ctx, si, m_prime, m, wo, sample, active);
 
         if (m_disable_eval) {
             active = false;
@@ -268,6 +269,8 @@ public:
         Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
 
         const auto pdf = vndf_pdf * jacobian;
+        active &= pdf > 0;
+
         return dr::select(active, pdf, 0.f);
     }
 
