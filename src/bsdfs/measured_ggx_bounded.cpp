@@ -42,6 +42,7 @@ public:
         this->m_use_parameterization = props.get("use_parameterization", false);
         this->m_disable_sample       = props.get("disable_sample", false);
         this->m_disable_eval         = props.get("disable_eval", false);
+        this->m_bounded_ggx          = props.get("bounded_ggx", false);
 
         auto fs            = Thread::thread()->file_resolver();
         fs::path file_path = fs->resolve(props.string("filename"));
@@ -118,7 +119,7 @@ public:
             dr::none_or<false>(active))
             return { bs, 0.f };
 
-        const BoundedGGX bounded_ggx(this->m_alpha);
+        const BoundedGGX ggx(this->m_alpha, this->m_bounded_ggx);
 
         Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
@@ -128,13 +129,13 @@ public:
         sample_phi        = sample_phi - dr::floor(sample_phi);
 
         Float jacobian = 1.f;
-        Normal3f m     = bounded_ggx.sample(wi, sample_phi, sample_theta);
-        Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
+        Normal3f m = ggx.sample(wi, sample_phi, sample_theta);
+        Float vndf_pdf = ggx.pdf_m(wi, m);
 
         Vector3f m_prime = m;
         if (this->m_use_parameterization) {
-            m_prime  = bounded_ggx.warp_microfacet(m);
-            jacobian = bounded_ggx.theta_jacobian(m, m_prime);
+            m_prime  = ggx.warp_microfacet(m);
+            jacobian = ggx.theta_jacobian(m, m_prime);
             m        = m_prime;
         }
 
@@ -177,23 +178,25 @@ public:
         Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
 
-        const auto bounded_ggx = BoundedGGX(this->m_alpha);
+        const auto ggx = BoundedGGX(this->m_alpha, this->m_bounded_ggx);
 
         Vector3f m_prime = dr::normalize(wo + wi);
         Vector3f m       = m_prime;
         if (this->m_use_parameterization) {
-            m = bounded_ggx.unwarp_microfacet(m_prime);
+            m = ggx.unwarp_microfacet(m_prime);
         }
 
-        const auto sample2 = bounded_ggx.invert(wi, m);
-        active &= bounded_ggx.pdf_m(wi, m) > 0;
+        const auto sample2 = ggx.invert(wi, m);
+        active &= ggx.pdf_m(wi, m) > 0;
 
         auto sample = Point2f(sample2.y(), sample2.x());
 
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
 
-        auto spec = this->eval_m(ctx, si, m_prime, m, wo, sample, active);
+        std::swap(m, m_prime);
+
+        auto spec = this->eval_m(ctx, si, m, m_prime, wo, sample, active);
 
         if (m_disable_eval) {
             active = false;
@@ -234,7 +237,7 @@ public:
             spec *= m_specular_reflectance->eval(si, active);
         }
 
-        const BoundedGGX bounded_ggx(this->m_alpha);
+        const BoundedGGX bounded_ggx(this->m_alpha, this->m_use_parameterization);
         // spec *= dr::Pi<Float> / (4.f * bounded_ggx.elevation(m));
         spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
                 (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
@@ -306,6 +309,7 @@ private:
     bool m_use_parameterization;
     bool m_disable_sample;
     bool m_disable_eval;
+    bool m_bounded_ggx;
     ref<Texture> m_specular_reflectance;
 };
 

@@ -14,21 +14,47 @@ template <typename Float, typename Spectrum> class BoundedGGX {
 public:
     MI_IMPORT_TYPES();
 
-    explicit BoundedGGX(const float alpha, const float epsilon = 1e-3)
+    explicit BoundedGGX(const float alpha,
+                        const bool bounded_ggx = true,
+                        const float epsilon    = 1e-3)
         : m_alpha(alpha), m_epsilon(epsilon), m_alpha2(alpha * alpha),
           m_alpha4(alpha * alpha * alpha * alpha), m_alpha_inv(1.f / alpha),
-          m_alpha_inv2(1.f / (alpha * alpha)) {}
+          m_alpha_inv2(1.f / (alpha * alpha)), bounded_ggx(bounded_ggx) {}
 
     Normal3f sample(const Vector3f &wi,
                     const Float &sample_phi,
                     const Float &sample_theta) const {
+        if (this->bounded_ggx) {
+            return this->sample_bounded(wi, sample_phi, sample_theta);
+        }
+        return this->sample_unbounded(wi, sample_phi, sample_theta);
+    }
+
+    Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
+        if (this->bounded_ggx) {
+            return this->invert_bounded(wi, m);
+        }
+        return this->invert_unbounded(wi, m);
+    }
+
+    Float pdf(const Vector3f &wi, const Vector3f &wo) const {
+        if (this->bounded_ggx) {
+            return this->pdf_bounded(wi, wo);
+        }
+        return this->pdf_unbounded(wi, wo);
+    }
+
+    Normal3f eval(const Vector3f &m) const {
+        return this->ndf_supplementary(m);
+    }
+
+    Normal3f sample_bounded(const Vector3f &wi,
+                            const Float &sample_phi,
+                            const Float &sample_theta) const {
         Vector3f i_std = dr::normalize(
             Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
 
-        Float u1 = this->clip_uniform(sample_phi);
-        Float u2 = this->clip_uniform(sample_theta);
-
-        Float phi = 2.f * dr::Pi<Float> * u1;
+        Float phi = 2.f * dr::Pi<Float> * sample_phi;
         Float s   = 1.f + dr::sqrt(wi.x() * wi.x() + wi.y() * wi.y());
 
         const auto &a2 = this->m_alpha2;
@@ -62,7 +88,14 @@ public:
         return this->pdf(wi, wo);
     }
 
-    Float pdf(const Vector3f &wi, const Vector3f &wo) const {
+    Float pdf_unbounded(const Vector3f &wi, const Vector3f &wo) const {
+        const auto m = dr::normalize(wi + wo);
+        const auto nominator   = this->ndf(m);
+        const auto denominator = (1.f + wi.z()) / 2.f;
+        return dr::select(dr::dot(m, wi) > 0.f, nominator / denominator, 0.f);
+    }
+
+    Float pdf_bounded(const Vector3f &wi, const Vector3f &wo) const {
         Normal3f m  = dr::normalize(wi + wo);
         Float ndf   = this->ndf_supplementary(m);
         Vector2f ai = this->m_alpha * Vector2f(wi.x(), wi.y());
@@ -79,7 +112,7 @@ public:
         // ndf * (t - wi.z()) / (2 * len2));
     }
 
-    Vector2f invert(const Vector3f &wi, const Vector3f &m) const {
+    Vector2f invert_bounded(const Vector3f &wi, const Vector3f &m) const {
         const auto &a2 = this->m_alpha2;
         Normal3f i_std = dr::normalize(
             Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
@@ -107,9 +140,6 @@ public:
 
         Float u2 = (z - 1.0) / (lower_bound - 1.0);
         Float u1 = phi / (2 * dr::Pi<Float>);
-
-        u1 = clip_uniform(u1);
-        u2 = clip_uniform(u2);
 
         return Vector2f(u1, u2);
     }
@@ -141,9 +171,9 @@ public:
         return 2.f * dr::safe_asin(.5f * dist);
     }
 
-    Float smith_g1(const Vector3f &wo, const Vector3f &wm) const {
-        return dr::select(dr::dot(wo, wm) > 0.f,
-                          1.f / (1.f + this->lambda(this->elevation(wo))), 0.f);
+    Float smith_g1(const Vector3f &v, const Vector3f &m) const {
+        return dr::select(dr::dot(v, m) > 0.f,
+                          1.f / (1.f + this->lambda(this->elevation(v))), 0.f);
     }
 
     Float sigma_inv(const Float &sigma) const {
@@ -202,10 +232,10 @@ public:
     Float z(Float u, Float lb) const { return dr::fmadd(lb, u, 1.f - lb); }
 
     Float theta_jacobian(const Vector3f &m, const Vector3f &m_prime) const {
-        const auto theta_m = this->elevation(m);
+        const auto theta_m       = this->elevation(m);
         const auto theta_m_prime = this->elevation(m_prime);
 
-        const auto sin_theta_m = dr::sin(theta_m);
+        const auto sin_theta_m       = dr::sin(theta_m);
         const auto sin_theta_m_prime = dr::sin(theta_m_prime);
 
         return dr::Pi<Float> * sin_theta_m / (4 * theta_m * sin_theta_m_prime);
@@ -220,55 +250,99 @@ public:
     }
 
     Vector3f warp_microfacet(const Vector3f &microfacet) const {
-        Vector3f m = microfacet;
-        auto m_sph = this->cartesian_to_spherical(m);
-        auto phi_m = m_sph.x();
+        Vector3f m   = microfacet;
+        auto m_sph   = this->cartesian_to_spherical(m);
+        auto phi_m   = m_sph.x();
         auto theta_m = m_sph.y();
 
         theta_m = 2 * dr::square(theta_m) / dr::Pi<Float>;
 
-        return this->spherical_to_cartesian({phi_m, theta_m});
+        return this->spherical_to_cartesian({ phi_m, theta_m });
     }
 
     Vector3f unwarp_microfacet(const Vector3f &microfacet) const {
-        Vector3f m = microfacet;
-        auto m_sph = this->cartesian_to_spherical(m);
-        auto phi_m = m_sph.x();
+        Vector3f m   = microfacet;
+        auto m_sph   = this->cartesian_to_spherical(m);
+        auto phi_m   = m_sph.x();
         auto theta_m = m_sph.y();
 
         theta_m = dr::sqrt(theta_m * dr::Pi<Float> / 2);
 
-        return this->spherical_to_cartesian({phi_m, theta_m});
+        return this->spherical_to_cartesian({ phi_m, theta_m });
     }
 
-    Vector3f spherical_to_cartesian(const Vector2f& spherical) const {
-        auto phi = spherical.x();
+    Vector3f spherical_to_cartesian(const Vector2f &spherical) const {
+        auto phi   = spherical.x();
         auto theta = spherical.y();
 
-        auto [sin_phi_m, cos_phi_m] = dr::sincos(phi);
+        auto [sin_phi_m, cos_phi_m]     = dr::sincos(phi);
         auto [sin_theta_m, cos_theta_m] = dr::sincos(theta);
 
-        return {cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m, cos_theta_m};
+        return { cos_phi_m * sin_theta_m, sin_phi_m * sin_theta_m,
+                 cos_theta_m };
     }
 
     Vector2f cartesian_to_spherical(const Vector3f &cartesian) const {
-        auto phi = dr::atan2(cartesian.y(), cartesian.x());
+        auto phi   = dr::atan2(cartesian.y(), cartesian.x());
         auto theta = this->elevation(cartesian);
-        return {phi, theta};
+        return { phi, theta };
+    }
+
+    Vector3f sample_unbounded(const Vector3f &wi,
+                              const Float &u1,
+                              const Float &u2) const {
+        // by Dupuy and Benyoub
+        auto wi_std = dr::normalize(
+            Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
+
+        auto phi       = 2.f * dr::Pi<Float> * u1;
+        auto z         = dr::fmadd(1.f - u2, 1 + wi_std.z(), -wi_std.z());
+        auto sin_theta = dr::sqrt(dr::clip(1.f - z * z, 0, 1));
+        auto x         = sin_theta * dr::cos(phi);
+        auto y         = sin_theta * dr::sin(phi);
+        auto c         = Vector3f(x, y, z);
+        auto wm_std    = c + wi_std;
+
+        return dr::normalize(Vector3f(wm_std.x() * this->m_alpha,
+                                      wm_std.y() * this->m_alpha, wm_std.z()));
+    }
+
+    Vector2f invert_unbounded(const Vector3f &wi, const Vector3f &m) const {
+        const auto &a2 = this->m_alpha2;
+        Normal3f i_std = dr::normalize(
+            Normal3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
+
+        Float Nx = m.x(), Ny = m.y(), Nz = m.z();
+        Float Ix = i_std.x(), Iy = i_std.y(), Iz = i_std.z();
+
+        Float denom = (Nx * Nx + Ny * Ny) * m_alpha_inv2 + Nz * Nz;
+        Float numer = 2.0 * ((Ix * Nx + Iy * Ny) * m_alpha_inv + Iz * Nz);
+        Float lam   = numer / denom;
+
+        Float ox = lam * Nx * m_alpha_inv - Ix;
+        Float oy = lam * Ny * m_alpha_inv - Iy;
+        Float oz = lam * Nz - Iz;
+
+        Float z = oz;
+
+        Float phi = dr::atan2(oy, ox);
+        phi       = dr::select(phi < 0.f, phi + 2.f * dr::Pi<Float>, phi);
+
+        Float u2 = -(z - 1.0) / (i_std.z() + 1.0);
+        Float u1 = phi / (2 * dr::Pi<Float>);
+
+        return Vector2f(u1, u2);
     }
 
 private:
-    Float clip_uniform(const Float &u) const {
-        return u;
-        // return dr::clip(u, this->m_epsilon, 1.0 - this->m_epsilon);
-    }
-
     float m_alpha;
     float m_epsilon;
     float m_alpha2;
     float m_alpha4;
     float m_alpha_inv;
     float m_alpha_inv2;
+
+    bool bounded_ggx;
 };
 
 NAMESPACE_END(mitsuba)
