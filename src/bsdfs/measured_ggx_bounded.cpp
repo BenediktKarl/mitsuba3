@@ -193,6 +193,7 @@ public:
 
         sample.y() -= phi_i / (2.f * dr::Pi<Float>);
         sample.y() = sample.y() - dr::floor(sample.y());
+        sample.x() = dr::clip(sample.x(), 0, 1);
 
         std::swap(m, m_prime);
 
