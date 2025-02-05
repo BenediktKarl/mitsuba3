@@ -129,7 +129,7 @@ public:
         sample_phi        = sample_phi - dr::floor(sample_phi);
 
         Float jacobian = 1.f;
-        Normal3f m = ggx.sample(wi, sample_phi, sample_theta);
+        Normal3f m     = ggx.sample(wi, sample_phi, sample_theta);
         Float vndf_pdf = ggx.pdf_m(wi, m);
 
         Vector3f m_prime = m;
@@ -207,10 +207,8 @@ public:
     }
 
     Spectrum eval_m(const BSDFContext &ctx,
-                    const SurfaceInteraction3f &si,
+                    const Vector3f &wi,
                     const Vector3f &m,
-                    const Vector3f &m_prime,
-                    const Vector3f &wo,
                     const Vector2f &sample,
                     Mask active) const {
         if (!ctx.is_enabled(BSDFFlags::GlossyReflection) ||
@@ -218,28 +216,17 @@ public:
             return Spectrum(0.f);
         }
 
-        const Vector3f wi = si.wi;
-
         Float theta_i = elevation(wi), phi_i = dr::atan2(wi.y(), wi.x());
 
         UnpolarizedSpectrum spec;
         for (size_t i = 0; i < dr::size_v<UnpolarizedSpectrum>; ++i) {
             Float params_spec[3] = { phi_i, theta_i,
                                      Float(static_cast<float>(i)) };
-            if (!m_specular_reflectance) {
-                spec[i] = this->m_spectra.eval(sample, params_spec, active);
-                // spec[i] = 0.5 * wi[i] + 0.5;
-            } else {
-                spec[i] = 1;
-            }
+            spec[i] = this->m_spectra.eval(sample, params_spec, active);
         }
 
-        if (m_specular_reflectance) {
-            spec *= m_specular_reflectance->eval(si, active);
-        }
-
-        const BoundedGGX bounded_ggx(this->m_alpha, this->m_use_parameterization);
-        // spec *= dr::Pi<Float> / (4.f * bounded_ggx.elevation(m));
+        const BoundedGGX bounded_ggx(this->m_alpha,
+                                     this->m_use_parameterization);
         spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
                 (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
 
