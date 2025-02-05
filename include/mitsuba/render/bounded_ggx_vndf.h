@@ -96,6 +96,8 @@ public:
     }
 
     Float pdf_bounded(const Vector3f &wi, const Vector3f &wo) const {
+        Vector3f i_std = dr::normalize(
+            Vector3f(wi.x() * this->m_alpha, wi.y() * this->m_alpha, wi.z()));
         Normal3f m  = dr::normalize(wi + wo);
         Float ndf   = this->ndf_supplementary(m);
         Vector2f ai = this->m_alpha * Vector2f(wi.x(), wi.y());
@@ -107,7 +109,11 @@ public:
         Float s2       = s * s;
         Float k        = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        return ndf / (2 * (k * wi.z() + t));
+        Float lower_bound = -k * i_std.z();
+        Vector2f inv_sample = this->invert_bounded(wi, warp_microfacet(m));
+        Float z = dr::fmadd(lower_bound, inv_sample.y(), 1.f - inv_sample.y());
+
+        return dr::select(k * i_std.z() + z > 0, ndf / (2 * (k * wi.z() + t)), 0);
         // return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
         // ndf * (t - wi.z()) / (2 * len2));
     }

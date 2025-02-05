@@ -129,14 +129,14 @@ public:
         sample_phi        = sample_phi - dr::floor(sample_phi);
 
         Float jacobian = 1.f;
-        Normal3f m     = ggx.sample(wi, sample_phi, sample_theta);
+        Vector3f m     = ggx.sample(wi, sample_phi, sample_theta);
         Float vndf_pdf = ggx.pdf_m(wi, m);
 
         Vector3f m_prime = m;
         if (this->m_use_parameterization) {
             m_prime  = ggx.warp_microfacet(m);
             jacobian = ggx.theta_jacobian(m, m_prime);
-            m        = m_prime;
+            std::swap(m, m_prime);
         }
 
         Vector3f wo = dr::fmsub(m, 2.f * dr::dot(m, wi), wi);
@@ -146,8 +146,9 @@ public:
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        auto spec = this->eval_m(ctx, si.wi, m,{ sample_theta, sample2.y() }, active);
-        bs.pdf    = vndf_pdf * jacobian;
+        auto spec =
+            this->eval_m(ctx, si.wi, m, { sample_theta, sample2.y() }, active);
+        bs.pdf = vndf_pdf * jacobian;
 
         spec /= bs.pdf;
 
@@ -194,9 +195,7 @@ public:
         sample.y() = sample.y() - dr::floor(sample.y());
         sample.x() = dr::clip(sample.x(), 0, 1);
 
-        std::swap(m, m_prime);
-
-        auto spec = this->eval_m(ctx, si.wi, m, sample, active);
+        auto spec = this->eval_m(ctx, si.wi, m_prime, sample, active);
 
         if (m_disable_eval) {
             active = false;
