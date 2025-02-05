@@ -146,8 +146,7 @@ public:
         bs.sampled_type      = +BSDFFlags::GlossyReflection;
         bs.sampled_component = 0;
 
-        auto spec = this->eval_m(ctx, si, m, m_prime, bs.wo,
-                                 { sample_theta, sample2.y() }, active);
+        auto spec = this->eval_m(ctx, si.wi, m,{ sample_theta, sample2.y() }, active);
         bs.pdf    = vndf_pdf * jacobian;
 
         spec /= bs.pdf;
@@ -197,7 +196,7 @@ public:
 
         std::swap(m, m_prime);
 
-        auto spec = this->eval_m(ctx, si, m, m_prime, wo, sample, active);
+        auto spec = this->eval_m(ctx, si.wi, m, sample, active);
 
         if (m_disable_eval) {
             active = false;
