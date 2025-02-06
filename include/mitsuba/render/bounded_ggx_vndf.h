@@ -15,8 +15,9 @@ public:
     MI_IMPORT_TYPES();
 
     explicit BoundedGGX(const float alpha,
-                        const bool bounded_ggx = true,
-                        const float epsilon    = 1e-3)
+                        const bool bounded_ggx   = true,
+                        const bool relative_warp = true,
+                        const float epsilon      = 1e-3)
         : m_alpha(alpha), m_epsilon(epsilon), m_alpha2(alpha * alpha),
           m_alpha4(alpha * alpha * alpha * alpha), m_alpha_inv(1.f / alpha),
           m_alpha_inv2(1.f / (alpha * alpha)), bounded_ggx(bounded_ggx) {}
@@ -89,7 +90,7 @@ public:
     }
 
     Float pdf_unbounded(const Vector3f &wi, const Vector3f &wo) const {
-        const auto m = dr::normalize(wi + wo);
+        const auto m           = dr::normalize(wi + wo);
         const auto nominator   = this->ndf(m);
         const auto denominator = (1.f + wi.z()) / 2.f;
         return dr::select(dr::dot(m, wi) > 0.f, nominator / denominator, 0.f);
@@ -109,11 +110,12 @@ public:
         Float s2       = s * s;
         Float k        = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        Float lower_bound = -k * i_std.z();
-        Vector2f inv_sample = this->invert_bounded(wi, warp_microfacet(m));
+        Float lower_bound   = -k * i_std.z();
+        Vector2f inv_sample = this->invert_bounded(wi, warp_microfacet(wi, m));
         Float z = dr::fmadd(lower_bound, inv_sample.y(), 1.f - inv_sample.y());
 
-        return dr::select(k * i_std.z() + z > 0, ndf / (2 * (k * wi.z() + t)), 0);
+        return dr::select(k * i_std.z() + z > 0, ndf / (2 * (k * wi.z() + t)),
+                          0);
         // return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
         // ndf * (t - wi.z()) / (2 * len2));
     }
@@ -237,7 +239,8 @@ public:
 
     Float z(Float u, Float lb) const { return dr::fmadd(lb, u, 1.f - lb); }
 
-    Float theta_jacobian(const Vector3f &m, const Vector3f &m_prime) const {
+    Float theta_jacobian_absolute(const Vector3f &m,
+                                  const Vector3f &m_prime) const {
         const auto theta_m       = this->elevation(m);
         const auto theta_m_prime = this->elevation(m_prime);
 
@@ -255,7 +258,30 @@ public:
         return os;
     }
 
-    Vector3f warp_microfacet(const Vector3f &microfacet) const {
+    Vector3f warp_microfacet(const Vector3f &wi, const Vector3f &m) const {
+        if (this->relative_warp) {
+            return this->warp_microfacet_relative(wi, m);
+        }
+        return this->warp_microfacet_absolute(m);
+    }
+
+    Vector3f unwarp_microfacet(const Vector3f &wi, const Vector3f &m) const {
+        if (this->relative_warp) {
+            return this->unwarp_microfacet_relative(wi, m);
+        }
+        return this->unwarp_microfacet_absolute(m);
+    }
+
+    Float theta_jacobian(const Vector3f &wi,
+                         const Vector3f &m,
+                         const Vector3f &m_prime) const {
+        if (this->relative_warp) {
+            return this->theta_jacobian_relative(wi, m, m_prime);
+        }
+        return this->theta_jacobian_absolute(m, m_prime);
+    }
+
+    Vector3f warp_microfacet_absolute(const Vector3f &microfacet) const {
         Vector3f m   = microfacet;
         auto m_sph   = this->cartesian_to_spherical(m);
         auto phi_m   = m_sph.x();
@@ -266,7 +292,7 @@ public:
         return this->spherical_to_cartesian({ phi_m, theta_m });
     }
 
-    Vector3f unwarp_microfacet(const Vector3f &microfacet) const {
+    Vector3f unwarp_microfacet_absolute(const Vector3f &microfacet) const {
         Vector3f m   = microfacet;
         auto m_sph   = this->cartesian_to_spherical(m);
         auto phi_m   = m_sph.x();
@@ -275,6 +301,46 @@ public:
         theta_m = dr::sqrt(theta_m * dr::Pi<Float> / 2);
 
         return this->spherical_to_cartesian({ phi_m, theta_m });
+    }
+
+    Vector3f warp_microfacet_relative(const Vector3f &wi,
+                                      const Vector3f &m) const {
+        auto m_sph     = this->cartesian_to_spherical(m);
+        auto phi_m     = m_sph.x();
+        auto theta_m   = m_sph.y();
+        auto theta_max = this->theta_max(wi);
+
+        theta_m = dr::square(theta_m / theta_max) * dr::Pi<Float> / 2.f;
+
+        return this->spherical_to_cartesian({ phi_m, theta_m });
+    }
+
+    Vector3f unwarp_microfacet_relative(const Vector3f &wi,
+                                        const Vector3f &m) const {
+        auto m_sph     = this->cartesian_to_spherical(m);
+        auto phi_m     = m_sph.x();
+        auto theta_m   = m_sph.y();
+        auto theta_max = this->theta_max(wi);
+
+        theta_m = dr::sqrt(2 * theta_m / dr::Pi<Float>) * theta_max;
+
+        return this->spherical_to_cartesian({ phi_m, theta_m });
+    }
+
+    Float theta_jacobian_relative(const Vector3f &wi,
+                                  const Vector3f &m,
+                                  const Vector3f &m_prime) const {
+        auto theta_max     = this->theta_max(wi);
+        auto theta_m       = this->elevation(m);
+        auto theta_m_prime = this->elevation(m_prime);
+
+        auto sin_theta_m       = dr::sin(theta_m);
+        auto sin_theta_m_prime = dr::sin(theta_m_prime);
+
+        auto nominator   = dr::Pi<Float> * theta_m * sin_theta_m;
+        auto denominator = dr::square(theta_max) * sin_theta_m_prime;
+
+        return nominator / denominator;
     }
 
     Vector3f spherical_to_cartesian(const Vector2f &spherical) const {
@@ -340,6 +406,13 @@ public:
         return Vector2f(u1, u2);
     }
 
+    Float theta_max(const Vector3f &wi) const {
+        if (this->bounded_ggx) {
+            return this->elevation(this->sample_bounded(wi, 0, 1));
+        }
+        return this->elevation(this->sample_unbounded(wi, 0, 1));
+    }
+
 private:
     float m_alpha;
     float m_epsilon;
@@ -349,6 +422,7 @@ private:
     float m_alpha_inv2;
 
     bool bounded_ggx;
+    bool relative_warp;
 };
 
 NAMESPACE_END(mitsuba)

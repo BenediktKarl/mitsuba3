@@ -14,11 +14,16 @@ MI_PY_EXPORT(BoundedGGX) {
     nb::class_<BoundedGGX>(m, "BoundedGGX")
         .def(
             "__init__",
-            [](BoundedGGX *alloc, ScalarFloat alpha, bool bounded_ggx, ScalarFloat epsilon) {
-                new (alloc) BoundedGGX(alpha, bounded_ggx, epsilon);
+            [](BoundedGGX *alloc, ScalarFloat alpha, bool bounded_ggx,
+               bool relative_warp, ScalarFloat epsilon) {
+                new (alloc)
+                    BoundedGGX(alpha, bounded_ggx, relative_warp, epsilon);
             },
-            "alpha"_a, "bounded_ggx"_a = true, "epsilon"_a = 1e-3)
-        .def(nb::init<float, bool, float>(), "alpha"_a, "bounded_ggx"_a = true, "epsilon"_a = 1e-3)
+            "alpha"_a, "bounded_ggx"_a = true, "relative_warp"_a = true,
+            "epsilon"_a = 1e-3)
+        .def(nb::init<float, bool, bool, float>(), "alpha"_a,
+             "bounded_ggx"_a = true, "relative_warp"_a = true,
+             "epsilon"_a = 1e-3)
         .def("sample", &BoundedGGX::sample, "wi"_a, "sample_phi"_a,
              "sample_theta"_a)
         .def("kiz_root", &BoundedGGX::kiz_root, "wi"_a)
@@ -35,16 +40,29 @@ MI_PY_EXPORT(BoundedGGX) {
         .def("ndf_supplementary", &BoundedGGX::ndf_supplementary, "m"_a)
         .def("alpha", &BoundedGGX::alpha)
         .def("epsilon", &BoundedGGX::epsilon)
-        .def("warp_microfacet", &BoundedGGX::warp_microfacet, "m"_a)
-        .def("unwarp_microfacet", &BoundedGGX::unwarp_microfacet, "m"_a)
+        .def("warp_microfacet", &BoundedGGX::warp_microfacet, "wi"_a, "m"_a)
+        .def("unwarp_microfacet", &BoundedGGX::unwarp_microfacet, "wi"_a, "m"_a)
+        .def("warp_microfacet_absolute", &BoundedGGX::warp_microfacet_absolute,
+             "m"_a)
+        .def("unwarp_microfacet_absolute",
+             &BoundedGGX::unwarp_microfacet_absolute, "m"_a)
+        .def("warp_microfacet_relative", &BoundedGGX::warp_microfacet_relative,
+             "wi"_a, "m"_a)
+        .def("unwarp_microfacet_relative",
+             &BoundedGGX::unwarp_microfacet_relative, "wi"_a, "m"_a)
         .def("spherical_to_cartesian", &BoundedGGX::spherical_to_cartesian,
              "spherical"_a)
         .def("cartesian_to_spherical", &BoundedGGX::cartesian_to_spherical,
              "cartesian"_a)
-        .def("theta_jacobian", &BoundedGGX::theta_jacobian, "m"_a, "m_prime"_a)
+        .def("theta_jacobian", &BoundedGGX::theta_jacobian, "wi"_a, "m"_a,
+             "m_prime"_a)
+        .def("theta_jacobian_absolute", &BoundedGGX::theta_jacobian_absolute,
+             "m"_a, "m_prime"_a)
+        .def("theta_jacobian_relative", &BoundedGGX::theta_jacobian_relative,
+             "wi"_a, "m"_a, "m_prime"_a)
         .def("sample_unbounded", &BoundedGGX::sample_unbounded, "wi"_a, "u1"_a,
              "u2"_a)
-        .def("invert_sample_unbounded", &BoundedGGX::invert_unbounded,
-             "wi"_a, "m"_a)
+        .def("invert_sample_unbounded", &BoundedGGX::invert_unbounded, "wi"_a,
+             "m"_a)
         .def_repr(BoundedGGX);
 }
