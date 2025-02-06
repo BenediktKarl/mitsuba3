@@ -188,7 +188,10 @@ public:
         Vector3f m_prime = dr::normalize(wo + wi);
         Vector3f m       = m_prime;
         if (this->m_use_parameterization) {
-            m = ggx.unwarp_microfacet(wi, m_prime);
+            auto theta_i = ggx.elevation(wi);
+            auto phi_m = dr::atan2(m.y(), m.x());
+            auto wi_prime = ggx.spherical_to_cartesian({0, theta_i});
+            m = ggx.unwarp_microfacet(wi_prime, m_prime);
         }
 
         const auto sample2 = ggx.invert(wi, m);

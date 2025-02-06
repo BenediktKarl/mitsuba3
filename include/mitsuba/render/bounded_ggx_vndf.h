@@ -239,17 +239,6 @@ public:
 
     Float z(Float u, Float lb) const { return dr::fmadd(lb, u, 1.f - lb); }
 
-    Float theta_jacobian_absolute(const Vector3f &m,
-                                  const Vector3f &m_prime) const {
-        const auto theta_m       = this->elevation(m);
-        const auto theta_m_prime = this->elevation(m_prime);
-
-        const auto sin_theta_m       = dr::sin(theta_m);
-        const auto sin_theta_m_prime = dr::sin(theta_m_prime);
-
-        return dr::Pi<Float> * sin_theta_m / (4 * theta_m * sin_theta_m_prime);
-    }
-
     friend std::ostream &operator<<(std::ostream &os, const BoundedGGX &ggx) {
         os << "BoundedGGX[\n";
         os << "\talpha=" << ggx.m_alpha << "\n";
@@ -310,7 +299,7 @@ public:
         auto theta_m   = m_sph.y();
         auto theta_max = this->theta_max(wi);
 
-        theta_m = dr::square(theta_m / theta_max) * dr::Pi<Float> / 2.f;
+        theta_m = dr::square(theta_m) / theta_max;
 
         return this->spherical_to_cartesian({ phi_m, theta_m });
     }
@@ -322,9 +311,20 @@ public:
         auto theta_m   = m_sph.y();
         auto theta_max = this->theta_max(wi);
 
-        theta_m = dr::sqrt(2 * theta_m / dr::Pi<Float>) * theta_max;
+        theta_m = dr::sqrt(theta_m * theta_max);
 
         return this->spherical_to_cartesian({ phi_m, theta_m });
+    }
+
+    Float theta_jacobian_absolute(const Vector3f &m,
+                                  const Vector3f &m_prime) const {
+        const auto theta_m       = this->elevation(m);
+        const auto theta_m_prime = this->elevation(m_prime);
+
+        const auto sin_theta_m       = dr::sin(theta_m);
+        const auto sin_theta_m_prime = dr::sin(theta_m_prime);
+
+        return dr::Pi<Float> * sin_theta_m / (4 * theta_m * sin_theta_m_prime);
     }
 
     Float theta_jacobian_relative(const Vector3f &wi,
@@ -337,8 +337,8 @@ public:
         auto sin_theta_m       = dr::sin(theta_m);
         auto sin_theta_m_prime = dr::sin(theta_m_prime);
 
-        auto nominator   = dr::Pi<Float> * theta_m * sin_theta_m;
-        auto denominator = dr::square(theta_max) * sin_theta_m_prime;
+        auto nominator   = theta_max * sin_theta_m;
+        auto denominator = 2 * theta_m * sin_theta_m_prime;
 
         return nominator / denominator;
     }
