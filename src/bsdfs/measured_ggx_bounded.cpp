@@ -136,10 +136,10 @@ public:
 
         Vector3f m_prime = m;
         if (this->m_use_parameterization) {
-            auto theta_i  = ggx.elevation(wi);
-            auto wi_prime = Vector3f(dr::sin(theta_i), 0, dr::cos(theta_i));
-            m_prime       = ggx.warp_microfacet(wi_prime, m);
-            jacobian      = ggx.theta_jacobian(wi_prime, m, m_prime);
+            auto theta_i = ggx.elevation(wi);
+            auto wi_iso  = ggx.spherical_to_cartesian({ 0, theta_i });
+            m_prime      = ggx.warp_microfacet(wi_iso, m);
+            jacobian     = ggx.theta_jacobian(wi_iso, m, m_prime);
             std::swap(m, m_prime);
         }
 
@@ -189,13 +189,13 @@ public:
         Vector3f m       = m_prime;
         if (this->m_use_parameterization) {
             auto theta_i = ggx.elevation(wi);
-            auto phi_m = dr::atan2(m.y(), m.x());
-            auto wi_prime = ggx.spherical_to_cartesian({0, theta_i});
-            m = ggx.unwarp_microfacet(wi_prime, m_prime);
+            auto wi_iso  = ggx.spherical_to_cartesian({ 0, theta_i });
+
+            m = ggx.unwarp_microfacet(wi_iso, m_prime);
         }
 
         const auto sample2 = ggx.invert(wi, m);
-        active &= ggx.pdf_m(wi, m) > 0;
+        // active &= ggx.pdf_m(wi, m) > 0;
 
         auto sample = Point2f(sample2.y(), sample2.x());
 
@@ -249,8 +249,8 @@ public:
             return 0.f;
         }
 
-        const BoundedGGX bounded_ggx(this->m_alpha, this->m_bounded_ggx,
-                                     this->m_relative_warp);
+        const BoundedGGX ggx(this->m_alpha, this->m_bounded_ggx,
+                             this->m_relative_warp);
 
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
@@ -260,11 +260,13 @@ public:
         Float jacobian = 1.f;
         if (m_use_parameterization) {
             const auto m_prime = m;
-            m                  = bounded_ggx.unwarp_microfacet(wi, m_prime);
-            jacobian           = bounded_ggx.theta_jacobian(wi, m, m_prime);
+            const auto theta_i = ggx.elevation(wi);
+            const auto wi_iso  = ggx.spherical_to_cartesian({ 0, theta_i });
+            m                  = ggx.unwarp_microfacet(wi_iso, m_prime);
+            jacobian           = ggx.theta_jacobian(wi_iso, m, m_prime);
         }
 
-        Float vndf_pdf = bounded_ggx.pdf_m(wi, m);
+        Float vndf_pdf = ggx.pdf_m(wi, m);
 
         const auto pdf = vndf_pdf * jacobian;
         active &= pdf > 0;

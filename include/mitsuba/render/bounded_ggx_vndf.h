@@ -20,7 +20,8 @@ public:
                         const float epsilon      = 1e-3)
         : m_alpha(alpha), m_epsilon(epsilon), m_alpha2(alpha * alpha),
           m_alpha4(alpha * alpha * alpha * alpha), m_alpha_inv(1.f / alpha),
-          m_alpha_inv2(1.f / (alpha * alpha)), bounded_ggx(bounded_ggx) {}
+          m_alpha_inv2(1.f / (alpha * alpha)), bounded_ggx(bounded_ggx),
+          relative_warp(relative_warp) {}
 
     Normal3f sample(const Vector3f &wi,
                     const Float &sample_phi,
@@ -63,8 +64,10 @@ public:
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
+        // sample in (lower_bouned, 1]
         Float lower_bound = -k * i_std.z();
         Float z = dr::fmadd(lower_bound, sample_theta, 1.f - sample_theta);
+        // z = this->root_redistribution(z, lower_bound, 1);
 
         Float sin_theta = dr::sqrt(dr::clip(1 - z * z, 0, 1));
         Vector3f o_std =
@@ -243,6 +246,8 @@ public:
         os << "BoundedGGX[\n";
         os << "\talpha=" << ggx.m_alpha << "\n";
         os << "\tepsilon=" << ggx.m_epsilon << "\n";
+        os << "\tbounded=" << ggx.bounded_ggx << "\n";
+        os << "\trelative_warp=" << ggx.relative_warp << "\n";
         os << "]" << std::endl;
         return os;
     }
@@ -411,6 +416,18 @@ public:
             return this->elevation(this->sample_bounded(wi, 0, 1));
         }
         return this->elevation(this->sample_unbounded(wi, 0, 1));
+    }
+
+    Float square_redistribution(Float x, Float low, Float high) const {
+        auto range  = high - low;
+        auto x_norm = (x - low) / range;
+        return dr::fmadd(dr::square(x_norm), range, low);
+    }
+
+    Float root_redistribution(Float x, Float low, Float high) const {
+        auto range  = high - low;
+        auto x_norm = (x - low) / range;
+        return dr::fmadd(dr::sqrt(x_norm), range, low);
     }
 
 private:

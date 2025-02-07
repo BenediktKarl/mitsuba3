@@ -64,5 +64,10 @@ MI_PY_EXPORT(BoundedGGX) {
              "u2"_a)
         .def("invert_sample_unbounded", &BoundedGGX::invert_unbounded, "wi"_a,
              "m"_a)
+        .def("theta_max", &BoundedGGX::theta_max, "wi"_a)
+        .def("square_redistribution", &BoundedGGX::square_redistribution, "x"_a,
+             "low"_a, "high"_a)
+        .def("root_redistribution", &BoundedGGX::root_redistribution, "x"_a,
+             "low"_a, "high"_a)
         .def_repr(BoundedGGX);
 }
