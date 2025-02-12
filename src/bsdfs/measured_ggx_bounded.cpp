@@ -195,7 +195,7 @@ public:
         }
 
         const auto sample2 = ggx.invert(wi, m);
-        // active &= ggx.pdf_m(wi, m) > 0;
+        // active &= ggx.ndf_supplementary(m_prime) > 0;
 
         auto sample = Point2f(sample2.y(), sample2.x());
 
@@ -233,8 +233,8 @@ public:
 
         const BoundedGGX bounded_ggx(
             this->m_alpha, this->m_use_parameterization, this->m_relative_warp);
-        spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
-                (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
+        // spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
+                // (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
 
         return depolarizer<Spectrum>(spec) & active;
     }
