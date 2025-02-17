@@ -39,6 +39,8 @@ public:
             return;
         }
 
+        m_z_square = props.get("z_square", false);
+
         this->m_use_parameterization = props.get("use_parameterization", false);
         this->m_relative_warp        = props.get("relative_warp", false);
         this->m_disable_sample       = props.get("disable_sample", false);
@@ -120,8 +122,7 @@ public:
             dr::none_or<false>(active))
             return { bs, 0.f };
 
-        const BoundedGGX ggx(this->m_alpha, this->m_bounded_ggx,
-                             this->m_relative_warp);
+        const BoundedGGX ggx = this->make_bounded_ggx();
 
         Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
@@ -182,8 +183,7 @@ public:
         Float phi_i = dr::atan2(wi.y(), wi.x());
         phi_i = dr::select(phi_i < 0.f, phi_i + 2.f * dr::Pi<Float>, phi_i);
 
-        const auto ggx = BoundedGGX(this->m_alpha, this->m_bounded_ggx,
-                                    this->m_relative_warp);
+        const auto ggx = this->make_bounded_ggx();
 
         Vector3f m_prime = dr::normalize(wo + wi);
         Vector3f m       = m_prime;
@@ -231,10 +231,9 @@ public:
             spec[i] = this->m_spectra.eval(sample, params_spec, active);
         }
 
-        const BoundedGGX bounded_ggx(
-            this->m_alpha, this->m_use_parameterization, this->m_relative_warp);
-        // spec *= dr::maximum(1e-3, bounded_ggx.ndf(m)) /
-                // (4.f * bounded_ggx.sigma(bounded_ggx.elevation(wi)));
+        const BoundedGGX ggx = this->make_bounded_ggx();
+        // spec *= dr::maximum(1e-3, ggx.ndf(m)) /
+        // (4.f * ggx.sigma(ggx.elevation(wi)));
 
         return depolarizer<Spectrum>(spec) & active;
     }
@@ -249,8 +248,7 @@ public:
             return 0.f;
         }
 
-        const BoundedGGX ggx(this->m_alpha, this->m_bounded_ggx,
-                             this->m_relative_warp);
+        const BoundedGGX ggx = this->make_bounded_ggx();
 
         const Vector3f wi = si.wi, &wo = wo_;
         active &= Frame3f::cos_theta(wi) > 0.f && Frame3f::cos_theta(wo) > 0.f;
@@ -285,6 +283,11 @@ public:
 
     MI_DECLARE_CLASS()
 private:
+    [[nodiscard]] BoundedGGX make_bounded_ggx() const {
+        return BoundedGGX(this->m_alpha, this->m_bounded_ggx,
+                          this->m_relative_warp, this->m_z_square);
+    }
+
     template <typename Value> Value u2theta(Value u) const {
         return dr::square(u) * (dr::Pi<Float> / 2.f);
     }
@@ -308,6 +311,7 @@ private:
     bool m_disable_eval;
     bool m_bounded_ggx;
     bool m_relative_warp;
+    bool m_z_square;
     ref<Texture> m_specular_reflectance;
 };
 

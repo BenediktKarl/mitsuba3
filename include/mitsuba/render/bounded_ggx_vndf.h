@@ -17,11 +17,12 @@ public:
     explicit BoundedGGX(const float alpha,
                         const bool bounded_ggx   = true,
                         const bool relative_warp = true,
+                        const bool z_square      = false,
                         const float epsilon      = 1e-3)
         : m_alpha(alpha), m_epsilon(epsilon), m_alpha2(alpha * alpha),
           m_alpha4(alpha * alpha * alpha * alpha), m_alpha_inv(1.f / alpha),
           m_alpha_inv2(1.f / (alpha * alpha)), bounded_ggx(bounded_ggx),
-          relative_warp(relative_warp) {}
+          relative_warp(relative_warp), z_square(z_square) {}
 
     Normal3f sample(const Vector3f &wi,
                     const Float &sample_phi,
@@ -64,10 +65,14 @@ public:
         Float s2 = s * s;
         Float k  = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
-        // sample in (lower_bouned, 1]
         Float lower_bound = -k * i_std.z();
-        Float z = dr::fmadd(lower_bound, sample_theta, 1.f - sample_theta);
-        // z = this->root_redistribution(z, lower_bound, 1);
+
+        Float u_theta = sample_theta;
+        if (this->z_square) {
+            u_theta *= u_theta;
+        }
+
+        Float z = dr::fmadd(lower_bound, u_theta, 1.f - u_theta);
 
         Float sin_theta = dr::sqrt(dr::clip(1 - z * z, 0, 1));
         Vector3f o_std =
@@ -117,10 +122,14 @@ public:
         Vector2f inv_sample = this->invert_bounded(wi, warp_microfacet(wi, m));
         Float z = dr::fmadd(lower_bound, inv_sample.y(), 1.f - inv_sample.y());
 
-        return dr::select(k * i_std.z() + z > 0, ndf / (2 * (k * wi.z() + t)),
-                          0);
-        // return dr::select(wi.z() >= 0, ndf / (2 * (k * wi.z() + t)),
-        // ndf * (t - wi.z()) / (2 * len2));
+        Float base_bsdf =
+            dr::select(k * i_std.z() + z > 0, ndf / (2 * (k * wi.z() + t)), 0);
+
+        if (this->z_square) {
+            base_bsdf /= 2 * inv_sample.y();
+        }
+
+        return base_bsdf;
     }
 
     Vector2f invert_bounded(const Vector3f &wi, const Vector3f &m) const {
@@ -151,6 +160,10 @@ public:
 
         Float u2 = (z - 1.0) / (lower_bound - 1.0);
         Float u1 = phi / (2 * dr::Pi<Float>);
+
+        if (this->z_square) {
+            u2 = dr::sqrt(u2);
+        }
 
         return Vector2f(u1, u2);
     }
@@ -440,6 +453,7 @@ private:
 
     bool bounded_ggx;
     bool relative_warp;
+    bool z_square;
 };
 
 NAMESPACE_END(mitsuba)

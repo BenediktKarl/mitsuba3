@@ -15,15 +15,15 @@ MI_PY_EXPORT(BoundedGGX) {
         .def(
             "__init__",
             [](BoundedGGX *alloc, ScalarFloat alpha, bool bounded_ggx,
-               bool relative_warp, ScalarFloat epsilon) {
+               bool relative_warp, bool z_square, ScalarFloat epsilon) {
                 new (alloc)
-                    BoundedGGX(alpha, bounded_ggx, relative_warp, epsilon);
+                    BoundedGGX(alpha, bounded_ggx, relative_warp, z_square, epsilon);
             },
             "alpha"_a, "bounded_ggx"_a = true, "relative_warp"_a = true,
-            "epsilon"_a = 1e-3)
-        .def(nb::init<float, bool, bool, float>(), "alpha"_a,
+            "z_square"_a = false, "epsilon"_a = 1e-3)
+        .def(nb::init<float, bool, bool, bool, float>(), "alpha"_a,
              "bounded_ggx"_a = true, "relative_warp"_a = true,
-             "epsilon"_a = 1e-3)
+             "z_square"_a = false, "epsilon"_a = 1e-3)
         .def("sample", &BoundedGGX::sample, "wi"_a, "sample_phi"_a,
              "sample_theta"_a)
         .def("kiz_root", &BoundedGGX::kiz_root, "wi"_a)
