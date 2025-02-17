@@ -232,8 +232,8 @@ public:
         }
 
         const BoundedGGX ggx = this->make_bounded_ggx();
-        // spec *= dr::maximum(1e-3, ggx.ndf(m)) /
-        // (4.f * ggx.sigma(ggx.elevation(wi)));
+        spec *= dr::maximum(1e-3, ggx.ndf(m)) /
+                (4.f * ggx.sigma(ggx.elevation(wi)));
 
         return depolarizer<Spectrum>(spec) & active;
     }

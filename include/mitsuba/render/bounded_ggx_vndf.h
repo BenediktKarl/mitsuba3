@@ -119,7 +119,7 @@ public:
         Float k        = (1.f - a2) * s2 / (s2 + a2 * wi.z() * wi.z());
 
         Float lower_bound   = -k * i_std.z();
-        Vector2f inv_sample = this->invert_bounded(wi, warp_microfacet(wi, m));
+        Vector2f inv_sample = this->invert_bounded(wi, m);
         Float z = dr::fmadd(lower_bound, inv_sample.y(), 1.f - inv_sample.y());
 
         Float base_bsdf =
