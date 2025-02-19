@@ -175,7 +175,7 @@ public:
     }
 
     Float sigma(const Float &theta) const {
-        return dr::cos(theta) * (1.f + this->lambda(theta));
+        return (1 + dr::cos(theta)) / 2.f; //dr::cos(theta) * (1.f + this->lambda(theta));
     }
 
     Float
